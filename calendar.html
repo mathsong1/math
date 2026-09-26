@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calendar · 수학 및 그래프</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-page="calendar">
+<main id="app">
+  <div class="page-head">
+    <div class="crumb"><a href="index.html">메인</a> › Calendar</div>
+    <h1>Calendar</h1><p>두 달치 달력 (원본: Calendar2UMP.java)</p>
+  </div>
+  <section class="panel">
+    <div class="cal-nav">
+      <button class="btn" data-d="-12" title="전 년도">«&nbsp;전 년도</button>
+      <button class="btn" data-d="-1" title="전 월">‹&nbsp;전 월</button>
+      <span class="ym">
+        <input class="input" id="yy" type="number" aria-label="연도">
+        <select class="input" id="mm" aria-label="월" style="width:84px"></select>
+        <button class="btn" id="today">오늘</button>
+      </span>
+      <button class="btn" data-d="1" title="다음 월">다음 월&nbsp;›</button>
+      <button class="btn" data-d="12" title="다음 연도">다음 연도&nbsp;»</button>
+    </div>
+    <div class="cal-wrap" id="cals"></div>
+  </section>
+</main>
+<script src="assets/js/menu.js"></script>
+<script src="assets/js/common.js"></script>
+<script>
+(function () {
+  const now = new Date();
+  let y = now.getFullYear(), m = now.getMonth(); // m: 0~11
+  const yy = document.getElementById('yy'), mm = document.getElementById('mm');
+  for (let i = 1; i <= 12; i++) mm.add(new Option(i + '월', i - 1));
+  const names = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+  const yoil = ['일','월','화','수','목','금','토'];
+
+  function month(year, mon) {
+    const first = new Date(year, mon, 1).getDay();
+    const days = new Date(year, mon + 1, 0).getDate(); // 윤년 자동 처리
+    let html = `<div class="cal"><h2>${year} ${names[mon]}</h2><table><thead><tr>` +
+      yoil.map((d, i) => `<th class="${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${d}</th>`).join('') +
+      '</tr></thead><tbody><tr>';
+    let col = 0;
+    for (; col < first; col++) html += '<td></td>';
+    for (let d = 1; d <= days; d++, col++) {
+      if (col && col % 7 === 0) html += '</tr><tr>';
+      const cls = [col % 7 === 0 ? 'sun' : col % 7 === 6 ? 'sat' : ''];
+      if (year === now.getFullYear() && mon === now.getMonth() && d === now.getDate()) cls.push('today');
+      html += `<td class="${cls.join(' ')}"><span>${d}</span></td>`;
+    }
+    while (col % 7) { html += '<td></td>'; col++; }
+    return html + '</tr></tbody></table></div>';
+  }
+  function draw() {
+    yy.value = y; mm.value = m;
+    const y2 = m === 11 ? y + 1 : y, m2 = (m + 1) % 12;
+    document.getElementById('cals').innerHTML = month(y, m) + month(y2, m2);
+  }
+  function move(delta) {
+    const t = y * 12 + m + delta;
+    y = Math.floor(t / 12); m = ((t % 12) + 12) % 12; draw();
+  }
+  document.querySelectorAll('[data-d]').forEach(b => b.addEventListener('click', () => move(+b.dataset.d)));
+  yy.addEventListener('change', () => { const v = parseInt(yy.value, 10); if (v > 0) { y = v; draw(); } });
+  mm.addEventListener('change', () => { m = +mm.value; draw(); });
+  document.getElementById('today').addEventListener('click', () => { y = now.getFullYear(); m = now.getMonth(); draw(); });
+  draw();
+})();
+</script>
+</body>
+</html>

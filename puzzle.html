@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Puzzle 5×5 · 수학 및 그래프</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-page="puzzle">
+<main id="app">
+  <div class="page-head">
+    <div class="crumb"><a href="index.html">메인</a> › Puzzle 5×5</div>
+    <h1>Puzzle 5×5</h1>
+    <p>그림을 불러오고 시작을 누르세요. 빈칸 옆 조각을 누르면 움직입니다. (원본: Puzzle5x5UMP.java)</p>
+  </div>
+  <section class="panel">
+    <div class="actions" style="margin-top:0">
+      <label class="btn" for="file">그림 불러오기</label>
+      <input id="file" type="file" accept="image/*" hidden>
+      <button class="btn primary" id="start">게임 시작</button>
+      <button class="btn" id="giveup" disabled>그만하기</button>
+    </div>
+    <div class="puzzle-wrap">
+      <div>
+        <label class="field">원본 그림</label>
+        <canvas id="preview" width="500" height="500"></canvas>
+      </div>
+      <div>
+        <label class="field">퍼즐</label>
+        <canvas id="board" width="500" height="500" aria-label="퍼즐 판"></canvas>
+        <div class="stats">
+          <div><b id="tStart">–</b><span>시작 시각</span></div>
+          <div><b id="tElapsed">0:00</b><span>걸린 시간</span></div>
+          <div><b id="moves">0</b><span>이동 횟수</span></div>
+        </div>
+        <div class="win" id="win" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+</main>
+<script src="assets/js/menu.js"></script>
+<script src="assets/js/common.js"></script>
+<script>
+(function () {
+  const N = 5, S = 500, T = S / N, EMPTY = N * N - 1;
+  const preview = document.getElementById('preview').getContext('2d');
+  const boardEl = document.getElementById('board'), board = boardEl.getContext('2d');
+  const $ = id => document.getElementById(id);
+  let img = null, map = [], running = false, moves = 0, t0 = 0, timer = null;
+
+  // 기본 그림: 그림을 불러오지 않아도 번호 타일로 바로 할 수 있도록
+  function defaultImage() {
+    const c = document.createElement('canvas'); c.width = c.height = S;
+    const g = c.getContext('2d');
+    for (let i = 0; i < N * N; i++) {
+      const x = (i % N) * T, y = Math.floor(i / N) * T;
+      g.fillStyle = `hsl(${210 + (i % N) * 8}, 60%, ${38 + Math.floor(i / N) * 7}%)`;
+      g.fillRect(x, y, T, T);
+      g.fillStyle = '#fff'; g.font = 'bold 40px "Noto Sans KR", sans-serif';
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(i + 1, x + T / 2, y + T / 2);
+    }
+    return c;
+  }
+  function setImage(src) {
+    // 정사각형으로 가운데 잘라서 사용
+    const c = document.createElement('canvas'); c.width = c.height = S;
+    const w = src.width, h = src.height, s = Math.min(w, h);
+    c.getContext('2d').drawImage(src, (w - s) / 2, (h - s) / 2, s, s, 0, 0, S, S);
+    img = c;
+    preview.clearRect(0, 0, S, S); preview.drawImage(img, 0, 0);
+    map = [...Array(N * N).keys()]; draw();
+  }
+  function draw() {
+    board.clearRect(0, 0, S, S);
+    map.forEach((seg, pos) => {
+      if (seg === EMPTY && running) return;
+      const sx = (seg % N) * T, sy = Math.floor(seg / N) * T;
+      const dx = (pos % N) * T, dy = Math.floor(pos / N) * T;
+      board.drawImage(img, sx, sy, T, T, dx + 1, dy + 1, T - 2, T - 2);
+    });
+  }
+  // 무작위 '합법적인 이동'으로 섞음 → 항상 풀 수 있는 배치 (원본은 임의 교환이라 절반은 풀 수 없었음)
+  function shuffle() {
+    map = [...Array(N * N).keys()];
+    let e = EMPTY, prev = -1;
+    for (let i = 0; i < 400; i++) {
+      const nb = neighbors(e).filter(p => p !== prev);
+      const p = nb[Math.floor(Math.random() * nb.length)];
+      [map[e], map[p]] = [map[p], map[e]]; prev = e; e = p;
+    }
+  }
+  function neighbors(pos) {
+    const r = Math.floor(pos / N), c = pos % N, out = [];
+    if (r > 0) out.push(pos - N); if (r < N - 1) out.push(pos + N);
+    if (c > 0) out.push(pos - 1); if (c < N - 1) out.push(pos + 1);
+    return out;
+  }
+  const fmt = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  function tick() { $('tElapsed').textContent = fmt(Math.floor((Date.now() - t0) / 1000)); }
+  function stop(msg) {
+    running = false; clearInterval(timer); tick();
+    $('start').disabled = false; $('start').textContent = '다시 시작';
+    $('giveup').disabled = true; $('file').disabled = false;
+    $('win').textContent = msg || ''; draw();
+  }
+
+  $('start').addEventListener('click', () => {
+    shuffle(); running = true; moves = 0; $('moves').textContent = 0; $('win').textContent = '';
+    t0 = Date.now(); $('tStart').textContent = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+    clearInterval(timer); timer = setInterval(tick, 1000); tick();
+    $('start').disabled = true; $('giveup').disabled = false; $('file').disabled = true;
+    draw();
+  });
+  $('giveup').addEventListener('click', () => { map = [...Array(N * N).keys()]; stop('게임을 끝냈습니다.'); });
+  $('file').addEventListener('change', e => {
+    const f = e.target.files[0]; if (!f) return;
+    const im = new Image();
+    im.onload = () => { setImage(im); URL.revokeObjectURL(im.src); };
+    im.src = URL.createObjectURL(f); // 그림은 내 컴퓨터 안에서만 쓰이고 어디로도 전송되지 않음
+  });
+  boardEl.addEventListener('click', e => {
+    if (!running) return;
+    const r = boardEl.getBoundingClientRect();
+    const c = Math.floor((e.clientX - r.left) / r.width * N), row = Math.floor((e.clientY - r.top) / r.height * N);
+    const pos = row * N + c, e0 = map.indexOf(EMPTY);
+    if (!neighbors(pos).includes(e0)) return;
+    [map[e0], map[pos]] = [map[pos], map[e0]];
+    $('moves').textContent = ++moves; draw();
+    if (map.every((v, i) => v === i)) stop(`완성! ${moves}번 이동, ${$('tElapsed').textContent} 걸렸습니다.`);
+  });
+
+  setImage(defaultImage());
+})();
+</script>
+</body>
+</html>
