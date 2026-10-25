@@ -38,6 +38,18 @@
     };
   }
 
+  /* ---------- 풀이 과정 도우미 ---------- */
+  /** 신뢰도 c → 임계값 z(또는 t) 을 구하는 줄 */
+  const critLine = (c, v, name = 'z', df = '') => `α = 1 − ${d(c)} = ${d(1 - c, 6)},  α/2 = ${d((1 - c) / 2, 6)}\n${name}<sub>α/2</sub>${df ? `(${df})` : ''} = ${d(v, 6)}   (P(${name.toUpperCase()} ≤ ${name}) = ${d(1 - (1 - c) / 2, 6)} 인 값)`;
+  /** 자료 → 평균, 표본표준편차 구하는 줄 */
+  function meanSdLines(x) {
+    const n = x.length, m = S.mean(x), ss = S.sum(x.map(v => (v - m) ** 2));
+    return [`x̄ = (${K.sumTerms(x.map(v => d(v)))}) / ${n} = ${d(m, 8)}`,
+      `s² = Σ(x − x̄)² / (n − 1) = ${d(ss, 8)} / ${n - 1} = ${d(ss / (n - 1), 8)},  s = ${d(Math.sqrt(ss / (n - 1)), 8)}`];
+  }
+  /** 이항계수 (정확한 정수) */
+  const choose = (n, k) => { let r = 1n; for (let i = 0n; i < BigInt(k); i++) r = r * (BigInt(n) - i) / (i + 1n); return r; };
+
   /** 사분위수 위치: h = (n−1)p 번째(0부터) 사이를 선형 보간 */
   function quantileStep(s, p, name) {
     const h = (s.length - 1) * p, lo = Math.floor(h), t = h - lo, n = s.length;
@@ -122,7 +134,11 @@
         run(s) {
           const [xb, sg, n, c] = E.nums(s); conf(c);
           const z = S.normal.inv(1 - (1 - c) / 2), e = z * sg / Math.sqrt(n);
-          return `<p>z<sub>α/2</sub> = z<sub>${d((1 - c) / 2, 4)}</sub> = ${d(z, 6)},  오차 한계 = z·σ/√n = ${d(e, 6)}</p><p>${pct(c)} 신뢰구간: <b>${d(xb - e, 8)} ≤ μ ≤ ${d(xb + e, 8)}</b></p>`;
+          return `<p>z<sub>α/2</sub> = z<sub>${d((1 - c) / 2, 4)}</sub> = ${d(z, 6)},  오차 한계 = z·σ/√n = ${d(e, 6)}</p><p>${pct(c)} 신뢰구간: <b>${d(xb - e, 8)} ≤ μ ≤ ${d(xb + e, 8)}</b></p>` + K.solve([
+            ['임계값 구하기', critLine(c, z)],
+            ['오차 한계  E = z<sub>α/2</sub> · σ / √n', `E = ${d(z, 6)} × ${d(sg)} / √${n} = ${d(z, 6)} × ${d(sg)} / ${d(Math.sqrt(n), 6)} = ${d(e, 6)}`],
+            ['신뢰구간  x̄ − E ≤ μ ≤ x̄ + E', `${d(xb)} − ${d(e, 6)} ≤ μ ≤ ${d(xb)} + ${d(e, 6)}\n${d(xb - e, 8)} ≤ μ ≤ ${d(xb + e, 8)}`]
+          ]);
         }
       },
       {
@@ -130,11 +146,16 @@
         note: '입력: 자료 ; 신뢰도   또는   x̄, s, n, 신뢰도',
         help: [['12.1, 11.8, 12.5, 12.0, 11.6, 12.3, 12.2; 0.95', '자료로'], ['25.4, 3.2, 16, 0.95', '요약값으로']],
         run(s) {
-          let xb, sd, n, c;
-          if (s.includes(';')) { const { data, rest } = dataAnd(s, ['신뢰도']); n = data.length; xb = S.mean(data); sd = Math.sqrt(S.variance(data)); c = rest[0]; }
+          let xb, sd, n, c, data;
+          if (s.includes(';')) { let rest; ({ data, rest } = dataAnd(s, ['신뢰도'])); n = data.length; xb = S.mean(data); sd = Math.sqrt(S.variance(data)); c = rest[0]; }
           else [xb, sd, n, c] = E.nums(s);
           conf(c); const t = S.tdist.inv(1 - (1 - c) / 2, n - 1), e = t * sd / Math.sqrt(n);
-          return `<p>x̄ = ${d(xb, 8)}, s = ${d(sd, 8)}, n = ${n}, 자유도 ${n - 1}</p><p>t<sub>α/2</sub>(${n - 1}) = ${d(t, 6)},  오차 한계 = t·s/√n = ${d(e, 6)}</p><p>${pct(c)} 신뢰구간: <b>${d(xb - e, 8)} ≤ μ ≤ ${d(xb + e, 8)}</b></p>`;
+          return `<p>x̄ = ${d(xb, 8)}, s = ${d(sd, 8)}, n = ${n}, 자유도 ${n - 1}</p><p>t<sub>α/2</sub>(${n - 1}) = ${d(t, 6)},  오차 한계 = t·s/√n = ${d(e, 6)}</p><p>${pct(c)} 신뢰구간: <b>${d(xb - e, 8)} ≤ μ ≤ ${d(xb + e, 8)}</b></p>` + K.solve([
+            ...(data ? [['표본평균과 표본표준편차', meanSdLines(data)]] : []),
+            ['임계값 구하기 (자유도 n − 1 = ' + (n - 1) + ')', critLine(c, t, 't', n - 1)],
+            ['오차 한계  E = t<sub>α/2</sub> · s / √n', `E = ${d(t, 6)} × ${d(sd, 8)} / √${n} = ${d(e, 6)}`],
+            ['신뢰구간  x̄ − E ≤ μ ≤ x̄ + E', `${d(xb, 8)} − ${d(e, 6)} ≤ μ ≤ ${d(xb, 8)} + ${d(e, 6)}\n${d(xb - e, 8)} ≤ μ ≤ ${d(xb + e, 8)}`]
+          ]);
         }
       },
       {
@@ -143,7 +164,12 @@
         help: [['120, 400, 0.95', ''], ['37, 50, 0.99', '']],
         run(s) {
           const [x, n, c] = E.nums(s); conf(c); const p = x / n, z = S.normal.inv(1 - (1 - c) / 2), e = z * Math.sqrt(p * (1 - p) / n);
-          return `<p>p̂ = ${x}/${n} = ${d(p, 8)},  z = ${d(z, 6)},  오차 한계 = z√(p̂(1−p̂)/n) = ${d(e, 6)}</p><p>${pct(c)} 신뢰구간: <b>${d(p - e, 6)} ≤ p ≤ ${d(p + e, 6)}</b></p>${n * p < 5 || n * (1 - p) < 5 ? '<p class="err">np̂, n(1−p̂) 가 5 미만이라 정규근사가 부정확합니다.</p>' : ''}`;
+          return `<p>p̂ = ${x}/${n} = ${d(p, 8)},  z = ${d(z, 6)},  오차 한계 = z√(p̂(1−p̂)/n) = ${d(e, 6)}</p><p>${pct(c)} 신뢰구간: <b>${d(p - e, 6)} ≤ p ≤ ${d(p + e, 6)}</b></p>${n * p < 5 || n * (1 - p) < 5 ? '<p class="err">np̂, n(1−p̂) 가 5 미만이라 정규근사가 부정확합니다.</p>' : ''}` + K.solve([
+            ['표본비율  p̂ = x / n', `p̂ = ${x} / ${n} = ${d(p, 8)}`],
+            ['임계값 구하기', critLine(c, z)],
+            ['오차 한계  E = z<sub>α/2</sub> √(p̂(1 − p̂) / n)', `E = ${d(z, 6)} × √(${d(p, 6)} × ${d(1 - p, 6)} / ${n}) = ${d(z, 6)} × ${d(Math.sqrt(p * (1 - p) / n), 6)} = ${d(e, 6)}`],
+            ['신뢰구간  p̂ − E ≤ p ≤ p̂ + E', `${d(p, 6)} − ${d(e, 6)} ≤ p ≤ ${d(p, 6)} + ${d(e, 6)}\n${d(p - e, 6)} ≤ p ≤ ${d(p + e, 6)}`]
+          ]);
         }
       },
       {
@@ -151,11 +177,16 @@
         note: '입력: 자료 ; 신뢰도   또는   s², n, 신뢰도',
         help: [['4.2, 4.8, 5.1, 3.9, 4.5, 5.0, 4.4; 0.95', ''], ['2.5, 20, 0.95', 's² = 2.5, n = 20']],
         run(s) {
-          let s2, n, c;
-          if (s.includes(';')) { const { data, rest } = dataAnd(s, ['신뢰도']); n = data.length; s2 = S.variance(data); c = rest[0]; } else [s2, n, c] = E.nums(s);
-          conf(c); const a = (1 - c) / 2, lo = S.chi2.inv(1 - a, n - 1), hi = S.chi2.inv(a, n - 1);
+          let s2, n, c, data;
+          if (s.includes(';')) { let rest; ({ data, rest } = dataAnd(s, ['신뢰도'])); n = data.length; s2 = S.variance(data); c = rest[0]; } else [s2, n, c] = E.nums(s);
+          conf(c); const a = (1 - c) / 2, lo = S.chi2.inv(1 - a, n - 1), hi = S.chi2.inv(a, n - 1), q = (n - 1) * s2;
           return `<p>s² = ${d(s2, 8)}, n = ${n},  χ²<sub>${d(a, 4)}</sub>(${n - 1}) = ${d(lo, 6)},  χ²<sub>${d(1 - a, 4)}</sub>(${n - 1}) = ${d(hi, 6)}</p>
-            <p>${pct(c)} 신뢰구간: <b>${d((n - 1) * s2 / lo, 8)} ≤ σ² ≤ ${d((n - 1) * s2 / hi, 8)}</b></p><p>σ: ${d(Math.sqrt((n - 1) * s2 / lo), 8)} ≤ σ ≤ ${d(Math.sqrt((n - 1) * s2 / hi), 8)}</p>`;
+            <p>${pct(c)} 신뢰구간: <b>${d(q / lo, 8)} ≤ σ² ≤ ${d(q / hi, 8)}</b></p><p>σ: ${d(Math.sqrt(q / lo), 8)} ≤ σ ≤ ${d(Math.sqrt(q / hi), 8)}</p>` + K.solve([
+            ...(data ? [['표본분산', meanSdLines(data)]] : []),
+            [`임계값 (자유도 n − 1 = ${n - 1})`, `α/2 = ${d(a, 6)}\n오른쪽 χ²<sub>α/2</sub>(${n - 1}) = ${d(lo, 6)},  왼쪽 χ²<sub>1−α/2</sub>(${n - 1}) = ${d(hi, 6)}`],
+            ['(n − 1)s²', `(${n} − 1) × ${d(s2, 8)} = ${d(q, 8)}`],
+            ['신뢰구간  (n − 1)s² / χ²<sub>α/2</sub> ≤ σ² ≤ (n − 1)s² / χ²<sub>1−α/2</sub>', `${d(q, 8)} / ${d(lo, 6)} ≤ σ² ≤ ${d(q, 8)} / ${d(hi, 6)}\n${d(q / lo, 8)} ≤ σ² ≤ ${d(q / hi, 8)}\n제곱근을 씌우면  ${d(Math.sqrt(q / lo), 8)} ≤ σ ≤ ${d(Math.sqrt(q / hi), 8)}`]
+          ]);
         }
       },
       {
@@ -167,7 +198,12 @@
           const s1 = S.variance(a), s2 = S.variance(b), n1 = a.length - 1, n2 = b.length - 1, al = (1 - c) / 2;
           const fU = S.fdist.inv(1 - al, n1, n2), fL = S.fdist.inv(al, n1, n2), r = s1 / s2;
           return `<p>s₁² = ${d(s1)}, s₂² = ${d(s2)}, s₁²/s₂² = ${d(r)},  F<sub>${d(al, 3)}</sub>(${n1}, ${n2}) = ${d(fU)}, F<sub>${d(1 - al, 3)}</sub>(${n1}, ${n2}) = ${d(fL)}</p>
-            <p>${pct(c)} 신뢰구간: <b>${d(r / fU)} ≤ σ₁²/σ₂² ≤ ${d(r / fL)}</b></p><p class="muted">구간에 1 이 ${r / fU <= 1 && 1 <= r / fL ? '들어 있으므로 두 분산이 같다고 볼 수 있습니다.' : '없으므로 두 분산이 다르다고 볼 수 있습니다.'}</p>`;
+            <p>${pct(c)} 신뢰구간: <b>${d(r / fU)} ≤ σ₁²/σ₂² ≤ ${d(r / fL)}</b></p><p class="muted">구간에 1 이 ${r / fU <= 1 && 1 <= r / fL ? '들어 있으므로 두 분산이 같다고 볼 수 있습니다.' : '없으므로 두 분산이 다르다고 볼 수 있습니다.'}</p>` + K.solve([
+            ['두 표본분산', [`자료1 (n₁ = ${n1 + 1}):  ${meanSdLines(a)[1].replace('s² =', 's₁² =')}`, `자료2 (n₂ = ${n2 + 1}):  ${meanSdLines(b)[1].replace('s² =', 's₂² =')}`]],
+            ['분산비', `s₁² / s₂² = ${d(s1)} / ${d(s2)} = ${d(r)}`],
+            [`임계값 (자유도 n₁ − 1 = ${n1}, n₂ − 1 = ${n2})`, `F<sub>α/2</sub>(${n1}, ${n2}) = ${d(fU)},  F<sub>1−α/2</sub>(${n1}, ${n2}) = ${d(fL)}`],
+            ['신뢰구간  (s₁²/s₂²) / F<sub>α/2</sub> ≤ σ₁²/σ₂² ≤ (s₁²/s₂²) / F<sub>1−α/2</sub>', `${d(r)} / ${d(fU)} ≤ σ₁²/σ₂² ≤ ${d(r)} / ${d(fL)}\n${d(r / fU)} ≤ σ₁²/σ₂² ≤ ${d(r / fL)}`]
+          ]);
         }
       },
       {
@@ -181,7 +217,13 @@
           const t = (m1 - m2) / se, p = 2 * (1 - S.tdist.cdf(Math.abs(t), df)), tc = S.tdist.inv(1 - (1 - c) / 2, df);
           return `<p>x̄₁ = ${d(m1)}, x̄₂ = ${d(m2)}, 차 = ${d(m1 - m2)}, 표준오차 = ${d(se)}, 자유도 ≈ ${d(df, 5)}</p>
             <p>${pct(c)} 신뢰구간: <b>${d(m1 - m2 - tc * se)} ≤ μ₁ − μ₂ ≤ ${d(m1 - m2 + tc * se)}</b></p>
-            <p>H₀: μ₁ = μ₂ 검정 — t = ${d(t)}, p-값 = ${pv(p)} → ${verdict(p, +(1 - c).toFixed(6))}</p>`;
+            <p>H₀: μ₁ = μ₂ 검정 — t = ${d(t)}, p-값 = ${pv(p)} → ${verdict(p, +(1 - c).toFixed(6))}</p>` + K.solve([
+            ['각 표본의 평균과 분산', [`자료1 (n₁ = ${a.length}):  x̄₁ = ${d(m1)},  s₁² = ${d(S.variance(a))}`, `자료2 (n₂ = ${b.length}):  x̄₂ = ${d(m2)},  s₂² = ${d(S.variance(b))}`]],
+            ['표준오차  SE = √(s₁²/n₁ + s₂²/n₂)', `SE = √(${d(S.variance(a))}/${a.length} + ${d(S.variance(b))}/${b.length}) = √(${d(v1)} + ${d(v2)}) = ${d(se)}`],
+            ['웰치 자유도  ν = (s₁²/n₁ + s₂²/n₂)² / [ (s₁²/n₁)²/(n₁−1) + (s₂²/n₂)²/(n₂−1) ]', `ν = ${d((v1 + v2) ** 2)} / (${d(v1 * v1 / (a.length - 1))} + ${d(v2 * v2 / (b.length - 1))}) = ${d(df, 5)}`],
+            ['신뢰구간  (x̄₁ − x̄₂) ± t<sub>α/2</sub>(ν)·SE', `t<sub>α/2</sub>(${d(df, 4)}) = ${d(tc)}\n${d(m1 - m2)} ± ${d(tc)} × ${d(se)} = ${d(m1 - m2)} ± ${d(tc * se)}\n${d(m1 - m2 - tc * se)} ≤ μ₁ − μ₂ ≤ ${d(m1 - m2 + tc * se)}`],
+            ['검정통계량  t = (x̄₁ − x̄₂) / SE', `t = ${d(m1 - m2)} / ${d(se)} = ${d(t)}\np-값 = 2·P(T > |t|) = ${pv(p)}  ${p < 1 - c ? '<' : '≥'}  α = ${d(1 - c)}`]
+          ]);
         }
       },
       {
@@ -190,7 +232,11 @@
         help: [['5, 1, 0.95', ''], ['12, 2, 0.99', '']],
         run(s) {
           const [sg, e, c] = E.nums(s); conf(c); const z = S.normal.inv(1 - (1 - c) / 2), n = (z * sg / e) ** 2, nc = sg * sg / ((1 - c) * e * e);
-          return `<p>정규분포 기준: n ≥ (${d(z, 5)}×${d(sg)}/${d(e)})² = ${d(n, 6)} → <b>n = ${Math.ceil(n - 1e-9)}</b></p><p>모집단 분포를 모를 때 (체비쇼프): n ≥ σ²/(α·d²) = ${d(nc, 6)} → <b>n = ${Math.ceil(nc - 1e-9)}</b></p>`;
+          return `<p>정규분포 기준: n ≥ (${d(z, 5)}×${d(sg)}/${d(e)})² = ${d(n, 6)} → <b>n = ${Math.ceil(n - 1e-9)}</b></p><p>모집단 분포를 모를 때 (체비쇼프): n ≥ σ²/(α·d²) = ${d(nc, 6)} → <b>n = ${Math.ceil(nc - 1e-9)}</b></p>` + K.solve([
+            ['임계값 구하기', critLine(c, z)],
+            ['오차 한계 z·σ/√n ≤ d  ⇔  n ≥ (z·σ / d)²', `n ≥ (${d(z, 5)} × ${d(sg)} / ${d(e)})² = ${d(z * sg / e, 6)}² = ${d(n, 6)}\n자연수로 올림 → n = ${Math.ceil(n - 1e-9)}`],
+            ['체비쇼프 부등식  P(|X̄ − μ| ≥ d) ≤ σ²/(n·d²) ≤ α  ⇔  n ≥ σ² / (α·d²)', `n ≥ ${d(sg)}² / (${d(1 - c)} × ${d(e)}²) = ${d(sg * sg)} / ${d((1 - c) * e * e)} = ${d(nc, 6)}\n자연수로 올림 → n = ${Math.ceil(nc - 1e-9)}`]
+          ]);
         }
       },
       {
@@ -201,7 +247,12 @@
           const { data, rest: [mu0, al] } = dataAnd(s, ['μ₀', '유의수준']); const n = data.length, m = S.mean(data), sd = Math.sqrt(S.variance(data));
           const t = (m - mu0) / (sd / Math.sqrt(n)), p2 = 2 * (1 - S.tdist.cdf(Math.abs(t), n - 1));
           return `<p>x̄ = ${d(m)}, s = ${d(sd)}, n = ${n},  t = (x̄ − μ₀)/(s/√n) = <b>${d(t)}</b></p>
-            <p>양측 p-값 = ${pv(p2)},  한쪽 p-값 = ${pv(p2 / 2)}</p><p>양측검정: ${verdict(p2, al)}</p>`;
+            <p>양측 p-값 = ${pv(p2)},  한쪽 p-값 = ${pv(p2 / 2)}</p><p>양측검정: ${verdict(p2, al)}</p>` + K.solve([
+            ['가설 세우기', `H₀: μ = ${d(mu0)}   H₁: μ ≠ ${d(mu0)}   (유의수준 α = ${d(al)})`],
+            ['표본평균과 표본표준편차', meanSdLines(data)],
+            ['검정통계량  t = (x̄ − μ₀) / (s / √n)', `t = (${d(m)} − ${d(mu0)}) / (${d(sd)} / √${n}) = ${d(m - mu0)} / ${d(sd / Math.sqrt(n))} = ${d(t)}`],
+            [`p-값 (자유도 n − 1 = ${n - 1})`, `p = 2·P(T > |${d(t)}|) = ${pv(p2)}\n임계값 t<sub>α/2</sub>(${n - 1}) = ${d(S.tdist.inv(1 - al / 2, n - 1))},  |t| = ${d(Math.abs(t))} ${Math.abs(t) > S.tdist.inv(1 - al / 2, n - 1) ? '>' : '≤'} 임계값\n→ ${p2 < al ? 'p < α 이므로 H₀ 기각' : 'p ≥ α 이므로 H₀ 채택'}`]
+          ]);
         }
       }
     ]
@@ -227,6 +278,17 @@
     const v = K.plot.autoView([pts], 0.2);
     K.plot.create(box, { view: v }).add({ type: 'points', pts: pts.map(p => [p[0], p[1]]), label: '자료' }).add({ type: 'fx', f, label });
   };
+  /** 직선 회귀 풀이: 최소제곱법  b = Sxy/Sxx, a = ȳ − b·x̄  (xs, ys 는 변환 후 값) */
+  function lineFitSteps(xs, ys, yName = 'y') {
+    const n = xs.length, mx = S.mean(xs), my = S.mean(ys);
+    const sxx = S.sum(xs.map(v => (v - mx) ** 2)), sxy = S.sum(xs.map((v, i) => (v - mx) * (ys[i] - my))), b = sxy / sxx;
+    return [
+      ['평균', [`x̄ = (${K.sumTerms(xs.map(v => d(v)))}) / ${n} = ${d(mx, 8)}`, `${yName}̄ = (${K.sumTerms(ys.map(v => d(v, 6)))}) / ${n} = ${d(my, 8)}`]],
+      [`편차곱의 합과 편차제곱합`, [`Sxx = Σ(x − x̄)² = ${K.sumTerms(xs.map(v => `(${d(v - mx, 5)})²`))} = ${d(sxx, 8)}`,
+        `Sxy = Σ(x − x̄)(${yName} − ${yName}̄) = ${K.sumTerms(xs.map((v, i) => `(${d(v - mx, 5)})(${d(ys[i] - my, 5)})`))} = ${d(sxy, 8)}`]],
+      ['최소제곱법  b = Sxy / Sxx,  a = ȳ − b·x̄', [`b = ${d(sxy, 8)} / ${d(sxx, 8)} = ${d(b, 8)}`, `a = ${d(my, 8)} − ${d(b, 8)} × ${d(mx, 8)} = ${d(my - b * mx, 8)}`]]
+    ];
+  }
   function withPredict(s) { const [a, b] = s.split(';'); return { pts: E.points(a, 2), x0: b !== undefined ? E.num(b.replace(/x\s*=/, '')) : null }; }
 
   register('statistics', 'regression', {
@@ -245,6 +307,10 @@
             const eM = t * Math.sqrt(R.mse * (1 / R.n + (x0 - xm) ** 2 / sxx)), eP = t * Math.sqrt(R.mse * (1 + 1 / R.n + (x0 - xm) ** 2 / sxx));
             h += `<h4>x = ${d(x0)} 에서 예측</h4><p>ŷ = <b>${d(yh, 8)}</b></p><p>평균 반응의 95% 신뢰구간: ${d(yh - eM)} ~ ${d(yh + eM)}</p><p>개별 값의 95% 예측구간: ${d(yh - eP)} ~ ${d(yh + eP)}</p>`;
           }
+          const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), steps = lineFitSteps(xs, ys);
+          steps.push(['결정계수  R² = 1 − SSE / SST', `SSE = Σ(y − ŷ)² = ${d(R.sse, 8)},  SST = Σ(y − ȳ)² = ${d(R.sst, 8)}\nR² = 1 − ${d(R.sse, 8)} / ${d(R.sst, 8)} = ${d(R.r2, 6)},  r = ${b < 0 ? '−' : '+'}√R² = ${d(r, 6)}`]);
+          if (x0 !== null) steps.push([`x = ${d(x0)} 대입`, `ŷ = ${d(a, 8)} + ${d(b, 8)} × ${d(x0)} = ${d(a + b * x0, 8)}`]);
+          h += K.solve(steps);
           return { html: h, mount: scatterMount(pts, x => a + b * x, 'ŷ = a + bx') };
         }
       },
@@ -254,7 +320,16 @@
         run(s) {
           const { pts } = withPredict(s); if (pts.length < 4) throw new Error('점이 4개 이상 필요합니다.');
           const R = regress(pts, 2), [a, b, c] = R.beta;
-          return { html: `<p>회귀곡선: <b>ŷ = ${N.polyStr([a, b, c].map(v => +v.toPrecision(8)))}</b></p><p>결정계수 R² = ${d(R.r2, 6)}</p><h4>계수 검정</h4>${coefTable(R, ['a', 'b', 'c'])}<h4>분산분석</h4>${anova(R)}`, mount: scatterMount(pts, x => a + b * x + c * x * x, '이차 회귀') };
+          const sx = (k) => S.sum(pts.map(p => p[0] ** k)), sxy = (k) => S.sum(pts.map(p => p[0] ** k * p[1]));
+          const solve = K.solve([
+            ['필요한 합 구하기', [`n = ${pts.length},  Σx = ${d(sx(1))},  Σx² = ${d(sx(2))},  Σx³ = ${d(sx(3))},  Σx⁴ = ${d(sx(4))}`, `Σy = ${d(sxy(0))},  Σxy = ${d(sxy(1))},  Σx²y = ${d(sxy(2))}`]],
+            ['정규방정식 (오차제곱합을 a, b, c 로 각각 미분해 0)', [`Σy   = a·n  + b·Σx  + c·Σx²   →  ${d(sxy(0))} = ${pts.length}a + ${d(sx(1))}b + ${d(sx(2))}c`,
+              `Σxy  = a·Σx + b·Σx² + c·Σx³   →  ${d(sxy(1))} = ${d(sx(1))}a + ${d(sx(2))}b + ${d(sx(3))}c`,
+              `Σx²y = a·Σx²+ b·Σx³ + c·Σx⁴   →  ${d(sxy(2))} = ${d(sx(2))}a + ${d(sx(3))}b + ${d(sx(4))}c`]],
+            ['연립방정식 풀기', `a = ${d(a, 8)},  b = ${d(b, 8)},  c = ${d(c, 8)}`],
+            ['결정계수  R² = 1 − SSE / SST', `R² = 1 − ${d(R.sse, 8)} / ${d(R.sst, 8)} = ${d(R.r2, 6)}`]
+          ]);
+          return { html: `<p>회귀곡선: <b>ŷ = ${N.polyStr([a, b, c].map(v => +v.toPrecision(8)))}</b></p><p>결정계수 R² = ${d(R.r2, 6)}</p>${solve}<h4>계수 검정</h4>${coefTable(R, ['a', 'b', 'c'])}<h4>분산분석</h4>${anova(R)}`, mount: scatterMount(pts, x => a + b * x + c * x * x, '이차 회귀') };
         }
       },
       {
@@ -264,7 +339,11 @@
         run(s) {
           const { pts } = withPredict(s); if (pts.some(p => p[1] <= 0)) throw new Error('y 가 모두 양수여야 합니다.');
           const R = regress(pts, 1, x => x, Math.log), a = Math.exp(R.beta[0]), b = R.beta[1];
-          return { html: `<p>회귀곡선: <b>ŷ = ${d(a, 8)}·e<sup>${d(b, 8)}x</sup></b></p><p>ln y 에 대한 결정계수 R² = ${d(R.r2, 6)}</p><p class="muted">두 배가 되는 x 간격: ln2 / b = ${d(Math.LN2 / b, 6)}</p>`, mount: scatterMount(pts, x => a * Math.exp(b * x), '지수 회귀') };
+          const ys = pts.map(p => Math.log(p[1])), steps = lineFitSteps(pts.map(p => p[0]), ys, 'Y');
+          steps[2][0] = '최소제곱법  b = Sxy / Sxx,  ln a = Ȳ − b·x̄';
+          steps.unshift(['양변에 자연로그  ln y = ln a + bx  →  Y = ln y 로 두면 직선', K.sumTerms(pts.map((p, i) => `ln ${d(p[1])} = ${d(ys[i], 6)}`), ',  ')]);
+          steps.push(['원래 꼴로', `a = e<sup>${d(R.beta[0], 8)}</sup> = ${d(a, 8)}  →  ŷ = ${d(a, 8)}·e<sup>${d(b, 8)}x</sup>`]);
+          return { html: `<p>회귀곡선: <b>ŷ = ${d(a, 8)}·e<sup>${d(b, 8)}x</sup></b></p><p>ln y 에 대한 결정계수 R² = ${d(R.r2, 6)}</p><p class="muted">두 배가 되는 x 간격: ln2 / b = ${d(Math.LN2 / b, 6)}</p>${K.solve(steps)}`, mount: scatterMount(pts, x => a * Math.exp(b * x), '지수 회귀') };
         }
       }
     ]
@@ -290,7 +369,12 @@
         run(s) {
           const { data, rest: [m0, al = 0.05] } = dataAnd(s, ['m₀']); const pos = data.filter(v => v > m0).length, neg = data.filter(v => v < m0).length, n = pos + neg, k = Math.min(pos, neg);
           const p = Math.min(1, 2 * S.binom.cdf(k, n, 0.5));
-          return `<p>(+) ${pos}개, (−) ${neg}개, n = ${n}</p><p>X ~ B(${n}, 0.5) 에서 양측 p-값 = 2·P(X ≤ ${k}) = <b>${pv(p)}</b></p><p>${verdict(p, al)}</p>`;
+          const terms = [...Array(k + 1).keys()];
+          return `<p>(+) ${pos}개, (−) ${neg}개, n = ${n}</p><p>X ~ B(${n}, 0.5) 에서 양측 p-값 = 2·P(X ≤ ${k}) = <b>${pv(p)}</b></p><p>${verdict(p, al)}</p>` + K.solve([
+            ['가설', `H₀: 중앙값 = ${d(m0)}  →  각 자료가 m₀ 보다 클 확률 = 1/2`],
+            ['부호 붙이기 (x − m₀)', `${K.sumTerms(data.map(v => `${d(v)}${v > m0 ? '(+)' : v < m0 ? '(−)' : '(0, 버림)'}`), ', ', 30)}\n(+) ${pos}개, (−) ${neg}개  →  n = ${n},  적은 쪽 개수 k = ${k}`],
+            ['p-값 = 2·P(X ≤ k),  X ~ B(n, 1/2)', `P(X ≤ ${k}) = (${K.sumTerms(terms.map(i => `<sub>${n}</sub>C<sub>${i}</sub>`))}) / 2<sup>${n}</sup> = (${K.sumTerms(terms.map(i => String(choose(n, i))))}) / ${2 ** n} = ${d(S.binom.cdf(k, n, 0.5), 6)}\np = 2 × ${d(S.binom.cdf(k, n, 0.5), 6)} = ${pv(p)}  ${p < al ? '<' : '≥'}  α = ${d(al)}`]
+          ]);
         }
       },
       {
@@ -307,7 +391,15 @@
           if (n <= 25) { const dist = signedRankDist(n); let c = 0; for (let w = 0; w <= Math.floor(W + 1e-9); w++) c += dist[w]; p = Math.min(1, 2 * c); how = '정확한 분포'; }
           else { const mu = n * (n + 1) / 4, sg = Math.sqrt(n * (n + 1) * (2 * n + 1) / 24), z = (W - mu + 0.5) / sg; p = 2 * S.normal.cdf(z); how = `정규근사 z = ${d(z, 5)}`; }
           return N.table(diffs.map((v, i) => [d(v), d(rk[i]), v > 0 ? '+' : '−']), ['차이', '|차이| 순위', '부호']) +
-            `<p>W⁺ = ${d(Wp)}, W⁻ = ${d(Wm)}, n = ${n}</p><p>양측 p-값 = <b>${pv(p)}</b> (${how})</p><p>${verdict(p, al)}</p>`;
+            `<p>W⁺ = ${d(Wp)}, W⁻ = ${d(Wm)}, n = ${n}</p><p>양측 p-값 = <b>${pv(p)}</b> (${how})</p><p>${verdict(p, al)}</p>` + K.solve([
+            ['차이 구하기 (0 은 버림)', `${K.sumTerms(diffs.map(v => d(v)), ', ', 30)}  →  n = ${n}`],
+            ['|차이| 에 순위 매기기 (같은 값은 평균 순위)', K.sumTerms(diffs.map((v, i) => `|${d(v)}|→${d(rk[i])}`), ',  ', 30)],
+            ['부호별 순위합', [`W⁺ = ${K.sumTerms(rk.filter((_, i) => diffs[i] > 0).map(v => d(v)), ' + ', 30) || '0'} = ${d(Wp)}`,
+              `W⁻ = ${K.sumTerms(rk.filter((_, i) => diffs[i] < 0).map(v => d(v)), ' + ', 30) || '0'} = ${d(Wm)}`,
+              `확인: W⁺ + W⁻ = n(n+1)/2 = ${n}×${n + 1}/2 = ${n * (n + 1) / 2}`]],
+            ['검정통계량 W = min(W⁺, W⁻)', n <= 25 ? `W = ${d(W)}\np = 2·P(W ≤ ${d(W)}) = ${pv(p)}  (W⁺ 의 정확한 분포)`
+              : `E(W) = n(n+1)/4 = ${d(n * (n + 1) / 4)},  σ = √(n(n+1)(2n+1)/24) = ${d(Math.sqrt(n * (n + 1) * (2 * n + 1) / 24))}\nz = (W − E(W) + 0.5) / σ,  p = 2·Φ(z) = ${pv(p)}`]
+          ]);
         }
       },
       {
@@ -327,7 +419,13 @@
           } else {
             const mu = n1 * (n1 + n2 + 1) / 2, sg = Math.sqrt(n1 * n2 * (n1 + n2 + 1) / 12), z = (W1 - mu) / sg; p = 2 * (1 - S.normal.cdf(Math.abs(z))); how = `정규근사 z = ${d(z, 5)}`;
           }
-          return `<p>n₁ = ${n1}, n₂ = ${n2},  첫 표본의 순위합 W = <b>${d(W1)}</b>,  U = ${d(U)}</p><p>양측 p-값 = <b>${pv(p)}</b> (${how})</p><p>${verdict(p, al)}</p>`;
+          const mu = n1 * (n1 + n2 + 1) / 2, sgW = Math.sqrt(n1 * n2 * (n1 + n2 + 1) / 12);
+          return `<p>n₁ = ${n1}, n₂ = ${n2},  첫 표본의 순위합 W = <b>${d(W1)}</b>,  U = ${d(U)}</p><p>양측 p-값 = <b>${pv(p)}</b> (${how})</p><p>${verdict(p, al)}</p>` + K.solve([
+            ['두 표본을 합쳐 작은 값부터 순위 (같은 값은 평균 순위)', [`자료1: ${x.map((v, i) => `${d(v)}→${d(rk[i])}`).join(',  ')}`, `자료2: ${y.map((v, i) => `${d(v)}→${d(rk[n1 + i])}`).join(',  ')}`]],
+            ['첫 표본의 순위합과 U', [`W = ${K.sumTerms(rk.slice(0, n1).map(v => d(v)), ' + ', 30)} = ${d(W1)}`, `U = W − n₁(n₁+1)/2 = ${d(W1)} − ${n1 * (n1 + 1) / 2} = ${d(U)}`]],
+            ['H₀ 일 때 W 의 평균과 표준편차', `E(W) = n₁(n₁+n₂+1)/2 = ${d(mu)},  σ<sub>W</sub> = √(n₁n₂(n₁+n₂+1)/12) = ${d(sgW)}`],
+            ['p-값', how === '정확한 분포' ? `|W − E(W)| = ${d(Math.abs(W1 - mu))} 이상 벗어날 확률 (정확한 분포) = ${pv(p)}` : `z = (W − E(W)) / σ<sub>W</sub> = (${d(W1)} − ${d(mu)}) / ${d(sgW)} = ${d((W1 - mu) / sgW)}\np = 2·P(Z > |z|) = ${pv(p)}`]
+          ]);
         }
       }
     ]
@@ -345,10 +443,14 @@
           const a = E.nums(s); let mu = 0, sg = 1, lo = -Infinity, hi;
           if (a.length === 1) hi = a[0]; else if (a.length === 3) [mu, sg, hi] = a; else if (a.length === 4) [mu, sg, lo, hi] = a; else throw new Error('1개, 3개, 또는 4개의 수를 입력하세요.');
           const P = S.normal.cdf(hi, mu, sg) - (isFinite(lo) ? S.normal.cdf(lo, mu, sg) : 0);
-          const zs = (v) => d((v - mu) / sg, 6);
+          const zs = (v) => d((v - mu) / sg, 6), zStep = (v) => `z = (x − μ)/σ = (${d(v)} − ${d(mu)}) / ${d(sg)} = ${zs(v)}`;
+          const solve = a.length === 1 ? '' : K.solve([
+            ['표준화  Z = (X − μ) / σ', isFinite(lo) ? [zStep(lo), zStep(hi)] : zStep(hi)],
+            ['표준정규분포표에서 찾기', isFinite(lo) ? `P(${zs(lo)} ≤ Z ≤ ${zs(hi)}) = Φ(${zs(hi)}) − Φ(${zs(lo)}) = ${d(S.normal.cdf(hi, mu, sg), 6)} − ${d(S.normal.cdf(lo, mu, sg), 6)} = ${d(P, 6)}` : `P(Z ≤ ${zs(hi)}) = Φ(${zs(hi)}) = ${d(P, 6)}`]
+          ]);
           const h = a.length === 1 ? `<p>Φ(${d(hi)}) = P(Z ≤ ${d(hi)}) = <b>${d(P, 8)}</b></p><p>P(Z > ${d(hi)}) = ${d(1 - P, 8)},  P(|Z| ≤ ${d(Math.abs(hi))}) = ${d(2 * S.normal.cdf(Math.abs(hi)) - 1, 8)}</p>`
             : `<p>X ~ N(${d(mu)}, ${d(sg)}²),  ${isFinite(lo) ? `P(${d(lo)} ≤ X ≤ ${d(hi)}) = P(${zs(lo)} ≤ Z ≤ ${zs(hi)})` : `P(X ≤ ${d(hi)}) = P(Z ≤ ${zs(hi)})`} = <b>${d(P, 8)}</b></p>`;
-          return { html: h, mount: pdfPlot(x => S.normal.pdf(x, mu, sg), mu - 4 * sg, mu + 4 * sg, `N(${d(mu)}, ${d(sg)}²)`, [isFinite(lo) ? lo : mu - 5 * sg, hi]) };
+          return { html: h + solve, mount: pdfPlot(x => S.normal.pdf(x, mu, sg), mu - 4 * sg, mu + 4 * sg, `N(${d(mu)}, ${d(sg)}²)`, [isFinite(lo) ? lo : mu - 5 * sg, hi]) };
         }
       },
       {
@@ -411,6 +513,12 @@
           const rows = []; for (let i = lo; i <= hi; i++) rows.push([i, d(S.binom.pmf(i, n, p), 6), d(S.binom.cdf(i, n, p), 6)]);
           let h = `<p>E(X) = np = ${d(n * p)},  V(X) = np(1−p) = ${d(n * p * (1 - p))}</p>`;
           if (k !== undefined) h = `<p>P(X = ${k}) = <sub>${n}</sub>C<sub>${k}</sub>·${d(p)}<sup>${k}</sup>·${d(1 - p)}<sup>${n - k}</sup> = <b>${d(S.binom.pmf(k, n, p), 8)}</b>,  P(X ≤ ${k}) = <b>${d(S.binom.cdf(k, n, p), 8)}</b></p>` + h;
+          h += K.solve([
+            ['평균과 분산  E(X) = np,  V(X) = np(1 − p)', [`E(X) = ${n} × ${d(p)} = ${d(n * p)}`, `V(X) = ${n} × ${d(p)} × ${d(1 - p)} = ${d(n * p * (1 - p))},  σ = ${d(Math.sqrt(n * p * (1 - p)))}`]],
+            ...(k !== undefined && k <= n ? [
+              [`P(X = k) = <sub>n</sub>C<sub>k</sub> p<sup>k</sup>(1 − p)<sup>n−k</sup>`, `P(X = ${k}) = ${choose(n, k)} × ${d(p)}<sup>${k}</sup> × ${d(1 - p)}<sup>${n - k}</sup> = ${choose(n, k)} × ${d(p ** k, 8)} × ${d((1 - p) ** (n - k), 8)} = ${d(S.binom.pmf(k, n, p), 8)}`],
+              [`P(X ≤ ${k}) = P(X = 0) + … + P(X = ${k})`, `${K.sumTerms([...Array(k + 1).keys()].map(i => d(S.binom.pmf(i, n, p), 6)))} = ${d(S.binom.cdf(k, n, p), 8)}`]] : [])
+          ]);
           return { html: h + N.table(rows, ['k', 'P(X = k)', 'P(X ≤ k)']), mount: pmfPlot(rows.map(r => [r[0], +r[1]]), `B(${n}, ${d(p)})`) };
         }
       },
@@ -422,7 +530,10 @@
           const [m, k] = E.nums(s); const hi = Math.ceil(m + 5 * Math.sqrt(m) + 3), rows = [];
           for (let i = 0; i <= hi; i++) rows.push([i, d(S.poisson.pmf(i, m), 6), d(S.poisson.cdf(i, m), 6)]);
           let h = `<p>E(X) = V(X) = m = ${d(m)}</p>`;
-          if (k !== undefined) h = `<p>P(X = ${k}) = e<sup>−${d(m)}</sup>·${d(m)}<sup>${k}</sup>/${k}! = <b>${d(S.poisson.pmf(k, m), 8)}</b>,  P(X ≤ ${k}) = <b>${d(S.poisson.cdf(k, m), 8)}</b></p>` + h;
+          if (k !== undefined) h = `<p>P(X = ${k}) = e<sup>−${d(m)}</sup>·${d(m)}<sup>${k}</sup>/${k}! = <b>${d(S.poisson.pmf(k, m), 8)}</b>,  P(X ≤ ${k}) = <b>${d(S.poisson.cdf(k, m), 8)}</b></p>` + h + K.solve([
+            ['P(X = k) = e<sup>−m</sup> m<sup>k</sup> / k!', `P(X = ${k}) = ${d(Math.exp(-m), 8)} × ${d(m ** k, 8)} / ${[...Array(k).keys()].reduce((r, i) => r * BigInt(i + 1), 1n)} = ${d(S.poisson.pmf(k, m), 8)}`],
+            [`P(X ≤ ${k}) = P(X = 0) + … + P(X = ${k})`, `${K.sumTerms([...Array(k + 1).keys()].map(i => d(S.poisson.pmf(i, m), 6)))} = ${d(S.poisson.cdf(k, m), 8)}`]
+          ]);
           return { html: h + N.table(rows, ['k', 'P(X = k)', 'P(X ≤ k)']), mount: pmfPlot(rows.map(r => [r[0], +r[1]]), `P(${d(m)})`) };
         }
       },
@@ -432,7 +543,10 @@
         run(s) {
           const [p, k] = E.nums(s); const rows = []; for (let i = 1; i <= Math.min(40, Math.ceil(Math.log(0.001) / Math.log(1 - p)) + 1); i++) rows.push([i, d(S.geom.pmf(i, p), 6), d(S.geom.cdf(i, p), 6)]);
           let h = `<p>P(X = k) = (1−p)<sup>k−1</sup>p,  E(X) = 1/p = ${d(1 / p)},  V(X) = (1−p)/p² = ${d((1 - p) / p / p)}</p>`;
-          if (k !== undefined) h = `<p>P(X = ${k}) = <b>${d(S.geom.pmf(k, p), 8)}</b>,  P(X ≤ ${k}) = <b>${d(S.geom.cdf(k, p), 8)}</b></p>` + h;
+          if (k !== undefined) h = `<p>P(X = ${k}) = <b>${d(S.geom.pmf(k, p), 8)}</b>,  P(X ≤ ${k}) = <b>${d(S.geom.cdf(k, p), 8)}</b></p>` + h + K.solve([
+            ['P(X = k) = (1 − p)<sup>k−1</sup> p   (k − 1 번 실패 후 첫 성공)', `P(X = ${k}) = ${d(1 - p)}<sup>${k - 1}</sup> × ${d(p)} = ${d((1 - p) ** (k - 1), 8)} × ${d(p)} = ${d(S.geom.pmf(k, p), 8)}`],
+            ['P(X ≤ k) = 1 − (1 − p)<sup>k</sup>   (k 번 모두 실패할 확률의 여사건)', `P(X ≤ ${k}) = 1 − ${d(1 - p)}<sup>${k}</sup> = 1 − ${d((1 - p) ** k, 8)} = ${d(S.geom.cdf(k, p), 8)}`]
+          ]);
           return { html: h + N.table(rows, ['k', 'P(X = k)', 'P(X ≤ k)']), mount: pmfPlot(rows.map(r => [r[0], +r[1]]), `Geo(${d(p)})`) };
         }
       },
@@ -443,7 +557,10 @@
           const [Nn, Kk, n, k] = E.nums(s); const rows = [];
           for (let i = Math.max(0, n - (Nn - Kk)); i <= Math.min(n, Kk); i++) rows.push([i, d(S.hyper.pmf(i, Nn, Kk, n), 6), d(S.hyper.cdf(i, Nn, Kk, n), 6)]);
           let h = `<p>E(X) = nK/N = ${d(n * Kk / Nn)},  V(X) = ${d(n * Kk / Nn * (1 - Kk / Nn) * (Nn - n) / (Nn - 1))}</p>`;
-          if (k !== undefined) h = `<p>P(X = ${k}) = <sub>${Kk}</sub>C<sub>${k}</sub>·<sub>${Nn - Kk}</sub>C<sub>${n - k}</sub>/<sub>${Nn}</sub>C<sub>${n}</sub> = <b>${d(S.hyper.pmf(k, Nn, Kk, n), 8)}</b></p>` + h;
+          if (k !== undefined) h = `<p>P(X = ${k}) = <sub>${Kk}</sub>C<sub>${k}</sub>·<sub>${Nn - Kk}</sub>C<sub>${n - k}</sub>/<sub>${Nn}</sub>C<sub>${n}</sub> = <b>${d(S.hyper.pmf(k, Nn, Kk, n), 8)}</b></p>` + h + K.solve([
+            ['P(X = k) = (성공 K 개 중 k 개) × (실패 N−K 개 중 n−k 개) / (전체 N 개 중 n 개)', `P(X = ${k}) = <sub>${Kk}</sub>C<sub>${k}</sub> × <sub>${Nn - Kk}</sub>C<sub>${n - k}</sub> / <sub>${Nn}</sub>C<sub>${n}</sub> = ${choose(Kk, k)} × ${choose(Nn - Kk, n - k)} / ${choose(Nn, n)} = ${d(S.hyper.pmf(k, Nn, Kk, n), 8)}`],
+            ['평균  E(X) = n·K/N', `E(X) = ${n} × ${Kk} / ${Nn} = ${d(n * Kk / Nn)}`]
+          ]);
           return { html: h + N.table(rows, ['k', 'P(X = k)', 'P(X ≤ k)']), mount: pmfPlot(rows.map(r => [r[0], +r[1]]), '초기하분포') };
         }
       },

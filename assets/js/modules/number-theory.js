@@ -11,7 +11,7 @@
  *  - 모든 계산을 BigInt 로 하여 int 범위 넘침 없음
  */
 (function () {
-  const { register } = window.KPHS;
+  const { register, solve, sumTerms } = window.KPHS;
 
   /* ---------- 기본 도구 ---------- */
   const toBig = (s) => {
@@ -87,6 +87,14 @@
   /** n! 에 들어 있는 소수 p 의 지수 (르장드르 공식) */
   function legendre(n, p) { let e = 0n; for (let q = p; q <= n; q *= p) e += n / q; return e; }
 
+  /** 르장드르 공식 풀이: n! 의 p 지수 = Σ ⌊n/pᵏ⌋ */
+  function legendreSolve(n, p, more = []) {
+    const t = []; for (let q = p; q <= n; q *= p) t.push([q, n / q]);
+    return solve([
+      [`르장드르 공식  e = ⌊n/p⌋ + ⌊n/p²⌋ + ⌊n/p³⌋ + …   (1~n 중 p, p², p³ … 의 배수 개수를 더함)`, t.length ? [...t.map(([q, v]) => `⌊${n}/${q}⌋ = ${v}`), `e = ${sumTerms(t.map(([, v]) => String(v)), ' + ', 12)} = ${legendre(n, p)}`] : `${p} > ${n} 이므로 e = 0`],
+      ...more]);
+  }
+
   /* ---------- 인수분해 ---------- */
   register('number-theory', 'factor', {
     help: [
@@ -105,13 +113,11 @@
           const fp = factorize(p);
           if (fp.size !== 1 || [...fp.values()][0] !== 1) throw new Error(`p = ${p} : 소수가 아닙니다.`);
           const e = legendre(n, p);
-          let steps = [], q = p;
-          while (q <= n) { steps.push(`⌊${n}/${q}⌋ = ${n / q}`); q *= p; }
-          return `<p>${n}! 에 들어 있는 소수 ${p} 의 지수 = <b>${e}</b></p>
-            <p class="mono">${steps.join(' + ')}${steps.length ? ' = ' + e : ''}</p>`;
+          return `<p>${n}! 에 들어 있는 소수 ${p} 의 지수 = <b>${e}</b></p>` + legendreSolve(n, p);
         }
         const z = legendre(n, 5n);
-        return `<p>${n}! 의 끝자리 0 의 개수 = <b>${z}</b> (10 = 2 × 5 이고, 5 의 지수가 2 의 지수보다 작으므로 5 의 지수와 같음)</p>`;
+        return `<p>${n}! 의 끝자리 0 의 개수 = <b>${z}</b> (10 = 2 × 5 이고, 5 의 지수가 2 의 지수보다 작으므로 5 의 지수와 같음)</p>` + legendreSolve(n, 5n, [
+          ['2 의 지수와 비교', `2 의 지수 = ${legendre(n, 2n)} ≥ 5 의 지수 = ${z}  →  10 을 만들 수 있는 개수는 5 의 지수 ${z} 개`]]);
       }
 
       const n = toBig(input);
@@ -138,9 +144,24 @@
           <tr><th>오일러 φ(n)</th><td>${phiFrom(n, f)}</td></tr>
           <tr><th>뫼비우스 μ(n)</th><td>${mu}</td></tr>
         </table>
+        ${factorSolve(n, f, d, s, mu)}
         <p class="source">계산 시간 ${ms} ms</p>`;
     }
   });
+
+  /** 인수분해 결과로 τ, σ, φ, μ 구하는 풀이 */
+  function factorSolve(n, f, d, s, mu) {
+    const fs = [...f], plain = (p, e) => `${p}${e > 1 ? '^' + e : ''}`;
+    const div = []; let m = n;
+    for (const [p, e] of fs) for (let i = 0; i < e && div.length < 12; i++) { div.push(`${m} ÷ ${p} = ${m / p}`); m /= p; }
+    return solve([
+      ['작은 소수부터 차례로 나누기', div.length < fs.reduce((a, [, e]) => a + e, 0) ? [...div, '…', `→ ${n} = ${fs.map(([p, e]) => plain(p, e)).join(' × ')}`] : [...div, `→ ${n} = ${fs.map(([p, e]) => plain(p, e)).join(' × ')}`]],
+      ['약수의 개수  τ(n) = (e₁+1)(e₂+1)…', `τ = ${fs.map(([, e]) => `(${e}+1)`).join('')} = ${d}`],
+      ['약수의 합  σ(n) = Π (p<sup>e+1</sup> − 1)/(p − 1)', `σ = ${fs.map(([p, e]) => `(${p}<sup>${e + 1}</sup> − 1)/(${p} − 1)`).join(' × ')}\n  = ${fs.map(([p, e]) => String((p ** BigInt(e + 1) - 1n) / (p - 1n))).join(' × ')} = ${s}`],
+      ['오일러 φ(n) = n · Π (1 − 1/p)', `φ = ${n} × ${fs.map(([p]) => `(1 − 1/${p})`).join(' × ')}\n  = ${fs.map(([p, e]) => `${e > 1 ? `${p}<sup>${e - 1}</sup>` : ''}(${p} − 1)`).join(' × ')} = ${phiFrom(n, f)}`],
+      ['뫼비우스 μ(n): 제곱인수가 있으면 0, 아니면 (−1)<sup>소인수 개수</sup>', fs.some(([, e]) => e > 1) ? `${fs.filter(([, e]) => e > 1).map(([p]) => p + '²').join(', ')} 로 나누어떨어짐 → μ = 0` : `서로 다른 소인수 ${fs.length}개 → μ = (−1)<sup>${fs.length}</sup> = ${mu}`]
+    ]);
+  }
 
   /* ---------- 원시근 / GCD·LCM / 위수 ---------- */
   function hasPrimitiveRoot(n, f) {
@@ -182,14 +203,31 @@
           table = `<p>법 ${n} 에 관한 ${a} 의 거듭제곱표</p>
             <table><tr><th>k</th>${head.join('')}</tr><tr><th>${a}<sup>k</sup></th>${body.join('')}</tr></table>`;
         }
+        const divs = []; for (let dd = 1n; dd <= phi && divs.length < 400; dd++) if (phi % dd === 0n) divs.push(dd);
+        const tried = divs.filter(dd => dd <= k);
         return `<p>ord<sub>${n}</sub>(${a}) = <b>${k}</b>, φ(${n}) = ${phi}</p>
-          <p>ord = φ 이면 원시근 → ${k === phi ? `a = ${a} : 법 ${n} 에 대한 <b>원시근</b>` : `a = ${a} : 법 ${n} 에 대한 원시근이 아님`}</p>${table}`;
+          <p>ord = φ 이면 원시근 → ${k === phi ? `a = ${a} : 법 ${n} 에 대한 <b>원시근</b>` : `a = ${a} : 법 ${n} 에 대한 원시근이 아님`}</p>${solve([
+            ['φ(n) 구하기', `φ(${n}) = ${phi}`],
+            ['위수는 φ(n) 의 약수 (오일러 정리 a<sup>φ(n)</sup> ≡ 1)', `φ(${n}) = ${phi} 의 약수: ${sumTerms(divs.map(String), ', ', 20)}`],
+            ['작은 약수부터 a<sup>d</sup> mod n 계산 → 처음으로 1 이 되는 d 가 위수', [...tried.slice(0, 20).map(dd => `${a}<sup>${dd}</sup> ≡ ${modPow(a, dd, n)} (mod ${n})${modPow(a, dd, n) === 1n ? '  ← 처음으로 1' : ''}`), ...(tried.length > 20 ? ['…', `${a}<sup>${k}</sup> ≡ 1 (mod ${n})  ← 처음으로 1`] : [])]]
+          ])}${table}`;
       }
 
       const nums = input.split(/[,\s]+/).filter(Boolean).map(toBig);
       if (nums.length >= 2) {
         const g = nums.reduce(gcd), l = nums.reduce(lcm);
-        return `<table><tr><th>GCD</th><td class="mono">${g}</td></tr><tr><th>LCM</th><td class="mono">${l}</td></tr></table>`;
+        const parts = []; let gg = abs(nums[0]), ll = abs(nums[0]);
+        for (let i = 1; i < nums.length; i++) {
+          const b = abs(nums[i]), lines = []; let [x, y] = [gg, b];
+          while (y && lines.length < 15) { lines.push(`${x} = ${x / y} × ${y} + ${x % y}`); [x, y] = [y, x % y]; }
+          const ng = gcd(gg, b), nl = lcm(ll, b);
+          lines.push(`→ gcd(${gg}, ${b}) = ${ng}`, `lcm(${ll}, ${b}) = ${ll} × ${b} / gcd(${ll}, ${b}) = ${ll * b} / ${gcd(ll, b)} = ${nl}`);
+          parts.push([`${i === 1 ? '' : '앞의 결과와 '}${b} 에 유클리드 호제법`, lines]);
+          gg = ng; ll = nl;
+        }
+        const fs = nums.map(v => [v, factorize(v)]);
+        parts.push(['소인수분해로 확인 (GCD = 공통 소인수의 최소 지수, LCM = 최대 지수)', fs.map(([v, f]) => `${v} = ${[...f].map(([p, e]) => `${p}${e > 1 ? '^' + e : ''}`).join(' × ') || '1'}`)]);
+        return `<table><tr><th>GCD</th><td class="mono">${g}</td></tr><tr><th>LCM</th><td class="mono">${l}</td></tr></table>` + solve(parts);
       }
       const n = nums[0];
       if (n === undefined || n < 2n) throw new Error('2 이상의 자연수를 입력하세요.');
@@ -198,9 +236,12 @@
         return `<p>φ(${n}) = ${phi}</p><p>n = ${n} : 1, 2, 4, p<sup>k</sup>, 2p<sup>k</sup> (p 는 홀수 소수) 꼴이 아니므로 <b>원시근이 없음</b></p>`;
       }
       const phiF = factorize(phi);
-      let g = 0n;
+      let g = 0n; const checks = [];
       for (let a = 1n; a < n; a++) {
-        if (gcd(a, n) === 1n && order(a, n, phi, phiF) === phi) { g = a; break; }
+        if (gcd(a, n) !== 1n) continue;
+        const ok = order(a, n, phi, phiF) === phi;
+        if (checks.length < 12) checks.push(`a = ${a}:  ${[...phiF.keys()].map(q => `${a}<sup>${phi / q}</sup> ≡ ${modPow(a, phi / q, n)}`).join(',  ')}  → ${ok ? '모두 1 이 아님 → 원시근' : '1 이 있음 → 아님'}`);
+        if (ok) { g = a; break; }
       }
       const count = phiFrom(phi, phiF);
       let list = '';
@@ -215,6 +256,12 @@
           <tr><th>최소 원시근</th><td><b>${g}</b></td></tr>
           <tr><th>원시근의 개수 φ(φ(n))</th><td>${count}</td></tr>
         </table>${list}
+        ${solve([
+          ['원시근이 있는지 확인', `n = ${n} 은 1, 2, 4, p<sup>k</sup>, 2p<sup>k</sup> 꼴 → 원시근이 있음`],
+          ['φ(n) 과 그 소인수', `φ(${n}) = ${phi} = ${[...phiF].map(([p, e]) => `${p}${e > 1 ? '^' + e : ''}`).join(' × ') || '1'}`],
+          [`판정법: 모든 소인수 q 에 대해 a<sup>φ/q</sup> ≢ 1 (mod ${n}) 이면 원시근`, checks],
+          ['원시근의 개수  φ(φ(n))', `φ(${phi}) = ${count}`]
+        ])}
         <p class="source">원시근 g 가 하나 있으면 gcd(k, φ(n)) = 1 인 k 에 대해 g<sup>k</sup> 가 모두 원시근입니다.</p>`;
     }
   });
@@ -244,6 +291,30 @@
     return [r0, s0, t0];
   }
   function inverse(a, m) { const [g, x] = egcd(mod(a, m), m); if (g !== 1n) return null; return mod(x, m); }
+  /** 확장 유클리드 역대입: 각 나머지를 a·s + b·t 로 나타낸 줄들 */
+  function egcdLines(a, b) {
+    const out = [];
+    let [r0, r1, s0, s1, t0, t1] = [a, b, 1n, 0n, 0n, 1n];
+    while (r1 !== 0n) {
+      const q = r0 / r1, r2 = r0 - q * r1;
+      if (r2 !== 0n && q !== 0n) out.push(`${r2} = ${r0} − ${q}×${r1} = ${a}·(${s0 - q * s1}) + ${b}·(${t0 - q * t1})`);
+      [r0, r1] = [r1, r2]; [s0, s1] = [s1, s0 - q * s1]; [t0, t1] = [t1, t0 - q * t1];
+    }
+    if (!out.length) out.push(`${r0} = ${a}·(${s0}) + ${b}·(${t0})`);
+    return out;
+  }
+  /** 일차 합동식 ax ≡ b (mod m) 풀이 (작은 수용): [풀이 줄들, 해 목록 또는 null] */
+  function linCongLines(a, b, m, v = 'x') {
+    a = mod(a, m); b = mod(b, m);
+    const g = gcd(a, m), dot = v.length > 1 ? '·' : '';
+    if (b % g !== 0n) return [[`${a}${dot}${v} ≡ ${b} (mod ${m}),  gcd(${a}, ${m}) = ${g} ∤ ${b}  → 해 없음`], null];
+    const m1 = m / g, inv = inverse((a / g) % m1, m1) ?? 0n, x0 = mod((b / g) * inv, m1);
+    const lines = [`${a}${dot}${v} ≡ ${b} (mod ${m}),  gcd(${a}, ${m}) = ${g}${g > 1n ? `  → 양변과 법을 ${g} 로 나눔: ${a / g}${dot}${v} ≡ ${b / g} (mod ${m1})` : ''}`];
+    if (m1 > 1n) lines.push(`${a / g} 의 역원 (mod ${m1}) = ${inv}  →  ${v} ≡ ${b / g} × ${inv} ≡ ${x0} (mod ${m1})`);
+    const all = []; for (let k = 0n; k < g && k < 50n; k++) all.push(x0 + k * m1);
+    if (g > 1n) lines.push(`법 ${m} 에서: ${v} ≡ ${all.join(', ')}${g > 50n ? ' …' : ''}`);
+    return [lines, all];
+  }
 
   /** '... ≡ ... (mod m)' 나누기 */
   function parseCong(s) {
@@ -302,6 +373,45 @@
     return K.expr.evalWith(src, [], O, {});
   }
 
+  /** 큰 수 나머지 풀이: 식 안의 a^k 는 페르마·오일러 정리와 반복제곱으로, n! 은 윌슨 정리·직접 곱으로 */
+  function valueSolve(body, m, res) {
+    const parts = [];
+    const f = factorize(m), phi = phiFrom(m, f);
+    for (const mm of body.matchAll(/(\d+)\s*\^\s*\(?(\d+)\)?/g)) {
+      if (parts.length >= 4) break;
+      const a = B(mm[1]), e = B(mm[2]), lines = [];
+      let e2 = e;
+      if (gcd(a, m) === 1n && e >= phi) {
+        e2 = e % phi;
+        lines.push(`gcd(${a}, ${m}) = 1 → ${isPrime(m) ? '페르마' : '오일러'} 정리 ${a}<sup>${phi}</sup> ≡ 1 (mod ${m})`, `지수 ${e} ÷ ${phi} 의 나머지 = ${e2}  →  ${a}<sup>${e}</sup> ≡ ${a}<sup>${e2}</sup> (mod ${m})`);
+      }
+      const bits = e2.toString(2);
+      if (e2 > 1n) {
+        let p = mod(a, m); const sq = [`${a}<sup>1</sup> ≡ ${p}`];
+        for (let i = 1; i < bits.length && i < 12; i++) { p = p * p % m; sq.push(`${a}<sup>${1n << B(i)}</sup> ≡ ${p}`); }
+        lines.push(`지수 ${e2} = ${bits}₍₂₎ = ${[...bits].reverse().map((b2, i) => b2 === '1' ? String(1n << B(i)) : null).filter(Boolean).reverse().join(' + ')}  (반복제곱)`, sq.join(',  ') + (bits.length > 12 ? ' …' : ''));
+      }
+      lines.push(`→ ${a}<sup>${e}</sup> ≡ ${modPow(a, e, m)} (mod ${m})`);
+      parts.push([`${a}<sup>${e}</sup> mod ${m}`, lines]);
+    }
+    for (const mm of body.matchAll(/(\d+)\s*!/g)) {
+      if (parts.length >= 6) break;
+      const n = B(mm[1]), lines = [];
+      if (isPrime(m) && n === m - 1n) lines.push(`윌슨 정리: (p − 1)! ≡ −1 (mod p)  →  ${n}! ≡ ${m - 1n} (mod ${m})`);
+      else if (n >= m) lines.push(`${n}! 안에 ${m} 이하의 수가 모두 곱해져 있으므로 ${m} 의 배수일 수 있음 → 직접 곱하면 ${evalMod(`fact(${n})`, m).md}`);
+      else {
+        let r = 1n; const run = [];
+        for (let i = 2n; i <= n; i++) { r = r * i % m; if (run.length < 10) run.push(`×${i} → ${r}`); }
+        lines.push(`1 부터 ${n} 까지 곱하면서 매번 ${m} 로 나눈 나머지만 남김`, run.join(',  ') + (n > 11n ? ' …' : ''));
+      }
+      lines.push(`→ ${n}! ≡ ${evalMod(`fact(${n})`, m).md} (mod ${m})`);
+      parts.push([`${n}! mod ${m}`, lines]);
+    }
+    if (!parts.length) return '';
+    parts.push(['나머지끼리 계산 (덧셈·곱셈은 나머지로 바꿔 계산해도 결과가 같음)', `${esc(body)} ≡ ${res} (mod ${m})`]);
+    return K.solve(parts);
+  }
+
   /* ---------------- 이산대수 ---------------- */
   register('number-theory', 'dlog', {
     ops: [
@@ -314,15 +424,20 @@
           const a = mod(c[1] || 0n, m), b = mod(intPoly(rhs)[0] - c[0], m);
           const steps = []; const [g, x] = egcd(a, m, steps);
           let h = `<p>${a}x ≡ ${b} (mod ${m}),  gcd(${a}, ${m}) = ${g}</p>`;
-          if (b % g !== 0n) return h + `<p>${g} ∤ ${b} 이므로 <b>해가 없습니다.</b></p>`;
+          if (b % g !== 0n) return h + `<p>${g} ∤ ${b} 이므로 <b>해가 없습니다.</b></p>` + K.solve([
+            ['유클리드 호제법으로 gcd 구하기', steps],
+            ['해가 있을 조건: gcd(a, n) | b', `${a}x − ${m}y = ${b} 의 좌변은 항상 ${g} 의 배수인데 ${b} 는 ${g} 의 배수가 아님 → 해 없음`]]);
           const m1 = m / g, x0 = mod(x * (b / g), m1);
-          h += `<h4>유클리드 호제법</h4><div class="steps">${steps.join('\n')}</div>`;
           h += `<p>${a}·(${x}) ≡ ${g} (mod ${m}) 이므로 x ≡ ${x}·${b / g} ≡ <b>${x0} (mod ${m1})</b></p>`;
-          if (g > 1n) {
-            const all = []; for (let k = 0n; k < g && k < 50n; k++) all.push(x0 + k * m1);
-            h += `<p>법 ${m} 에서 해는 ${g}개: ${all.join(', ')}${g > 50n ? ' …' : ''}</p>`;
-          }
-          return h;
+          const all = []; for (let k = 0n; k < g && k < 50n; k++) all.push(x0 + k * m1);
+          if (g > 1n) h += `<p>법 ${m} 에서 해는 ${g}개: ${all.join(', ')}${g > 50n ? ' …' : ''}</p>`;
+          return h + K.solve([
+            ['해가 있을 조건', `gcd(${a}, ${m}) = ${g} 이고 ${g} | ${b} → 해가 ${g}개 있음`],
+            ['유클리드 호제법', steps],
+            [`거꾸로 대입해서 ${a}·s + ${m}·t = ${g} 꼴 만들기`, egcdLines(a, m)],
+            [`양변에 ${b / g} 를 곱하기`, [`${a}·(${x}) ≡ ${g} (mod ${m})  →  ${a}·(${x}·${b / g}) ≡ ${b} (mod ${m})`, `x ≡ ${x * (b / g)} ≡ ${x0} (mod ${m1})`]],
+            ...(g > 1n ? [[`법 ${m} 에서 모든 해  x = ${x0} + ${m1}k  (k = 0, 1, …, ${g - 1n})`, all.join(', ') + (g > 50n ? ' …' : '')]] : [])
+          ]);
         }
       },
       {
@@ -333,8 +448,15 @@
           if (m > 2000000n) throw new Error('법이 너무 큽니다 (200만 이하).');
           const c = intPoly(lhs), r = intPoly(rhs); c[0] -= r[0];
           const sol = []; for (let x = 0n; x < m; x++) if (evalPolyMod(c, x, m) === 0n) sol.push(x);
+          const show = []; for (let x = 0n; x < m && x < 30n; x++) show.push(`f(${x}) ≡ ${evalPolyMod(c, x, m)}${evalPolyMod(c, x, m) === 0n ? '  ✓' : ''}`);
+          const fm = factorize(m);
           return `<p>f(x) − c = ${K.num.polyStr(c.map(Number))} ≡ 0 (mod ${m})</p>` +
-            (sol.length ? `<p>해 (${sol.length}개): <b>x ≡ ${sol.slice(0, 200).join(', ')}</b>${sol.length > 200 ? ' …' : ''} (mod ${m})</p>` : '<p><b>해가 없습니다.</b></p>');
+            (sol.length ? `<p>해 (${sol.length}개): <b>x ≡ ${sol.slice(0, 200).join(', ')}</b>${sol.length > 200 ? ' …' : ''} (mod ${m})</p>` : '<p><b>해가 없습니다.</b></p>') +
+            K.solve([
+              ['한 변으로 모으기', `${K.num.polyStr(c.map(Number))} ≡ 0 (mod ${m})`],
+              ...(fm.size > 1 ? [['법이 합성수이면: 소인수의 거듭제곱마다 따로 풀고 중국인 나머지 정리로 합칠 수 있음', `${m} = ${[...fm].map(([p, e]) => `${p}${e > 1 ? '^' + e : ''}`).join(' × ')}`]] : []),
+              [`x = 0, 1, …, ${m - 1n} 을 대입해 0 이 되는 값 찾기 (✓)`, m > 30n ? [...show, `… (${m}개 모두 대입)`] : show]
+            ]);
         }
       },
       {
@@ -351,15 +473,23 @@
           if (isPrime(m) && m > 2n && mod(a, m) !== 0n && b !== 0n) {
             const g = primRoot(m), p1 = m - 1n;
             const ia = dlog(g, mod(a, m), m, p1), ib = dlog(g, b, m, p1);
-            h += `<h4>지수(Ind)를 이용한 풀이 — 원시근 g = ${g}</h4>
-              <div class="steps">Ind ${a} + ${n}·Ind x ≡ Ind ${b}  (mod ${p1})
-${ia} + ${n}·Ind x ≡ ${ib}  (mod ${p1})
-${n}·Ind x ≡ ${mod(ib - ia, p1)}  (mod ${p1})</div>`;
+            const [ll, inds] = linCongLines(n, ib - ia, p1, 'Ind x');
+            const parts = [
+              [`원시근 g = ${g} 를 밑으로 지수(Ind) 구하기  (g<sup>Ind a</sup> ≡ a)`, [`${g}<sup>${ia}</sup> ≡ ${mod(a, m)}  → Ind ${mod(a, m)} = ${ia}`, `${g}<sup>${ib}</sup> ≡ ${b}  → Ind ${b} = ${ib}`]],
+              [`양변에 Ind 를 취함 (Ind 는 mod p − 1 = ${p1} 로 계산)`, [`Ind ${mod(a, m)} + ${n}·Ind x ≡ Ind ${b}  (mod ${p1})`, `${ia} + ${n}·Ind x ≡ ${ib}  (mod ${p1})`, `${n}·Ind x ≡ ${mod(ib - ia, p1)}  (mod ${p1})`]],
+              ['Ind x 에 대한 일차 합동식 풀기', ll]
+            ];
+            if (inds) parts.push(['x = g<sup>Ind x</sup> 로 되돌리기', inds.slice(0, 20).map(i => `x ≡ ${g}<sup>${i}</sup> ≡ ${modPow(g, i, m)} (mod ${m})`)]);
             if (n === 2n && mod(a, m) === 1n) {
               const L = modPow(b, (m - 1n) / 2n, m) === 1n ? 1 : -1;
               h += `<p>르장드르 기호 (${b}/${m}) = ${b}<sup>(${m}-1)/2</sup> mod ${m} = <b>${L}</b> → ${L === 1 ? '제곱잉여 (해가 있음)' : '제곱비잉여 (해가 없음)'}</p>`;
+              parts.unshift(['오일러 판정법  (b/p) ≡ b<sup>(p−1)/2</sup> (mod p)', `${b}<sup>${(m - 1n) / 2n}</sup> ≡ ${L === 1 ? 1 : `${m - 1n} ≡ −1`} (mod ${m})  → ${L === 1 ? '제곱잉여, 해 2개' : '제곱비잉여, 해 없음'}`]);
             }
-          } else if (!isPrime(m)) h += `<p class="muted">법 ${m} 이 소수가 아니어서 0 ≤ x < ${m} 을 직접 대입해 구했습니다.</p>`;
+            h += K.solve(parts);
+          } else if (!isPrime(m)) {
+            h += `<p class="muted">법 ${m} 이 소수가 아니어서 0 ≤ x < ${m} 을 직접 대입해 구했습니다.</p>`;
+            if (m <= 40n) { const rows = []; for (let x = 0n; x < m; x++) rows.push(`x = ${x}:  ${a}·${x}<sup>${n}</sup> ≡ ${mod(a * modPow(x, n, m), m)}${mod(a * modPow(x, n, m), m) === b ? '  ✓' : ''}`); h += K.solve([[`x = 0, 1, …, ${m - 1n} 을 대입해 ${b} 가 되는 값 찾기 (✓)`, rows]]); }
+          }
           return h;
         }
       },
@@ -378,15 +508,27 @@ ${n}·Ind x ≡ ${mod(ib - ia, p1)}  (mod ${p1})</div>`;
           const phi = phiFrom(m, factorize(m)), ordb = order(mod(b, m), m, phi, factorize(phi));
           const k = dlog(mod(b, m), target, m, ordb);
           let h = `<p>${a}·${b}<sup>x</sup> ≡ ${c} (mod ${m})  ⇒  ${b}<sup>x</sup> ≡ ${target} (mod ${m})</p>`;
-          if (k === null) return h + '<p><b>해가 없습니다.</b></p>';
+          if (k === null) {
+            const pw = []; if (ordb <= 40n) for (let i = 0n; i < ordb; i++) pw.push(`${b}<sup>${i}</sup> ≡ ${modPow(b, i, m)}`);
+            return h + '<p><b>해가 없습니다.</b></p>' + K.solve([
+              ['a 의 역원을 곱해 b<sup>x</sup> 만 남기기', `${a}<sup>−1</sup> ≡ ${ai} (mod ${m})  →  ${b}<sup>x</sup> ≡ ${c} × ${ai} ≡ ${target} (mod ${m})`],
+              [`${b} 의 위수 = ${ordb} → ${b}<sup>x</sup> 는 다음 ${ordb}개 값만 반복`, pw.length ? pw.join(',  ') : `(${ordb}개)`],
+              ['결론', `${target} 이 그 안에 없으므로 해가 없음${isPrime(m) ? `  (원시근의 Ind 로 보면 Ind ${mod(b, m)} 와 p − 1 의 gcd 가 Ind 우변을 나누지 못함)` : ''}`]
+            ]);
+          }
           h += `<p>해: <b>x ≡ ${k} (mod ${ordb})</b>  (ord<sub>${m}</sub>(${b}) = ${ordb})</p>`;
           if (isPrime(m)) {
             const g = primRoot(m), p1 = m - 1n;
             const i7 = dlog(g, mod(a, m), m, p1), i4 = dlog(g, mod(b, m), m, p1), i13 = dlog(g, c, m, p1);
-            h += `<h4>지수(Ind)를 이용한 풀이 — 원시근 g = ${g}</h4><div class="steps">Ind ${a} + x·Ind ${b} ≡ Ind ${c}  (mod ${p1})
-${i7} + ${i4}x ≡ ${i13}  (mod ${p1})
-${i4}x ≡ ${mod(i13 - i7, p1)}  (mod ${p1})</div>`;
-          }
+            h += K.solve([
+              [`원시근 g = ${g} 를 밑으로 지수(Ind) 구하기  (g<sup>Ind a</sup> ≡ a)`, [`Ind ${mod(a, m)} = ${i7}  (${g}<sup>${i7}</sup> ≡ ${mod(a, m)})`, `Ind ${mod(b, m)} = ${i4}  (${g}<sup>${i4}</sup> ≡ ${mod(b, m)})`, `Ind ${c} = ${i13}  (${g}<sup>${i13}</sup> ≡ ${c})`]],
+              [`양변에 Ind 를 취함 (mod p − 1 = ${p1})`, [`Ind ${a} + x·Ind ${b} ≡ Ind ${c}  (mod ${p1})`, `${i7} + ${i4}x ≡ ${i13}  (mod ${p1})`, `${i4}x ≡ ${mod(i13 - i7, p1)}  (mod ${p1})`]],
+              ['x 에 대한 일차 합동식 풀기', linCongLines(i4, i13 - i7, p1)[0]]
+            ]);
+          } else h += K.solve([
+            [`a 의 역원을 곱해 b<sup>x</sup> 만 남기기`, `${a}<sup>−1</sup> ≡ ${ai} (mod ${m})  →  ${b}<sup>x</sup> ≡ ${c} × ${ai} ≡ ${target} (mod ${m})`],
+            [`${b} 의 위수 ord = ${ordb} 이므로 x 는 mod ${ordb} 로 정해짐`, `${b}<sup>${k}</sup> ≡ ${target} (mod ${m})  →  x ≡ ${k} (mod ${ordb})`]
+          ]);
           return h;
         }
       },
@@ -398,7 +540,7 @@ ${i4}x ≡ ${mod(i13 - i7, p1)}  (mod ${p1})</div>`;
           if (!mm) throw new Error('끝에 (mod m) 을 붙여 주세요.');
           const m = B(mm[1]), body = s.slice(0, mm.index).replace(/^\s*x\s*[=≡]\s*/, '');
           const r = evalMod(body, m);
-          return `<p>${esc(body)} ≡ <b>${r.md}</b> (mod ${m})</p>` + (r.ex !== null && r.ex.toString().length < 200 ? `<p class="muted">실제 값: ${r.ex}</p>` : '');
+          return `<p>${esc(body)} ≡ <b>${r.md}</b> (mod ${m})</p>` + (r.ex !== null && r.ex.toString().length < 200 ? `<p class="muted">실제 값: ${r.ex}</p>` : '') + valueSolve(body, m, r.md);
         }
       },
       {
@@ -417,7 +559,10 @@ ${i4}x ≡ ${mod(i13 - i7, p1)}  (mod ${p1})</div>`;
             r = r + M * t; M = M * m1; r = mod(r, M);
             steps.push(`x = ${r} + ${M}t`);
           }
-          return `<div class="steps">${steps.join('\n')}</div><p>해: <b>x ≡ ${r} (mod ${M})</b></p>`;
+          return `<p>해: <b>x ≡ ${r} (mod ${M})</b></p>` + K.solve([
+            ['첫 식을 x = a + m·t 꼴로 놓고, 다음 식에 차례로 대입해 t 를 구함', steps],
+            ['검산', eqs.map(([a, m]) => `${r} ÷ ${m} 의 나머지 = ${mod(r, m)}  ${mod(r, m) === mod(a, m) ? '✓' : '✗'}`)]
+          ]);
         }
       }
     ]
@@ -458,6 +603,23 @@ ${i4}x ≡ ${mod(i13 - i7, p1)}  (mod ${p1})</div>`;
     }
     return { a, period: 0 };
   }
+  /** 근사분수 점화식 계산 줄 */
+  const convLines = (a, cs, n = 12) => a.slice(0, n).map((x, i) => {
+    const [pp, qp] = i >= 1 ? cs[i - 1] : [1n, 0n], [pq, qq] = i >= 2 ? cs[i - 2] : i === 1 ? [1n, 0n] : [0n, 1n];
+    return `k=${i}: p = ${x}×${pp} + ${pq} = ${cs[i][0]},   q = ${x}×${qp} + ${qq} = ${cs[i][1]}`;
+  }).concat(a.length > n ? ['…'] : []);
+  /** (P + √D)/Q 전개 과정 줄 */
+  function quadLines(P, D, Q, cnt) {
+    if (mod(D - P * P, abs(Q)) !== 0n) { P *= abs(Q); D *= Q * Q; Q *= abs(Q); }
+    const r = isqrt(D), out = [];
+    for (let i = 0; i < cnt; i++) {
+      const t = Q > 0n ? floorDiv(P + r, Q) : floorDiv(P + r + 1n, Q);
+      const P2 = t * Q - P, Q2 = (D - P2 * P2) / Q;
+      out.push(`(${P} + √${D})/${Q}:  a<sub>${i}</sub> = ⌊${K.num.dec((Number(P) + Math.sqrt(Number(D))) / Number(Q), 6)}⌋ = ${t},   P' = ${t}×${Q} − ${P} = ${P2},   Q' = (${D} − ${P2}²)/${Q} = ${Q2}`);
+      P = P2; Q = Q2;
+    }
+    return out;
+  }
   const floorDiv = (a, b) => { let q = a / b; if ((a % b !== 0n) && ((a < 0n) !== (b < 0n))) q -= 1n; return q; };
   /** 'sqrt(13)', '(1+sqrt(5))/2', '(3 - 2√7)/5' → {a, b, d, c} */
   function parseQuad(s) {
@@ -476,7 +638,10 @@ ${i4}x ≡ ${mod(i13 - i7, p1)}  (mod ${p1})</div>`;
         run(s) {
           const a = s.replace(/[\[\]]/g, '').split(/[;,\s]+/).filter(Boolean).map(x => K.nt.toBig(x));
           const cs = convergents(a), [p, q] = cs[cs.length - 1], g = gcd(p, q);
-          return `<p>${cfStr(a)} = <b>${p / g}/${q / g}</b> ≈ ${K.num.dec(Number(p) / Number(q), 12)}</p><h4>근사분수</h4>${convTable(a, cs, 40)}`;
+          return `<p>${cfStr(a)} = <b>${p / g}/${q / g}</b> ≈ ${K.num.dec(Number(p) / Number(q), 12)}</p>` + K.solve([
+            ['점화식  p<sub>k</sub> = a<sub>k</sub>p<sub>k−1</sub> + p<sub>k−2</sub>,  q<sub>k</sub> = a<sub>k</sub>q<sub>k−1</sub> + q<sub>k−2</sub>   (p<sub>−1</sub> = 1, p<sub>−2</sub> = 0, q<sub>−1</sub> = 0, q<sub>−2</sub> = 1)', convLines(a, cs)],
+            ['마지막 근사분수가 값', `${cfStr(a)} = p<sub>${a.length - 1}</sub>/q<sub>${a.length - 1}</sub> = ${p}/${q}${g > 1n ? ` = ${p / g}/${q / g}` : ''}`]
+          ]) + `<h4>근사분수</h4>${convTable(a, cs, 40)}`;
         }
       },
       {
@@ -485,7 +650,10 @@ ${i4}x ≡ ${mod(i13 - i7, p1)}  (mod ${p1})</div>`;
         run(s) {
           const m = s.replace(/\s/g, '').match(/^(-?\d+)\/(-?\d+)$/); if (!m) throw new Error('p/q 꼴로 입력하세요.');
           const steps = [], a = fracCF(B(m[1]), B(m[2]), steps), cs = convergents(a);
-          return `<p>${m[1]}/${m[2]} = <b>${cfStr(a)}</b></p><div class="steps">${steps.join('\n')}</div><h4>근사분수</h4>${convTable(a, cs)}`;
+          return `<p>${m[1]}/${m[2]} = <b>${cfStr(a)}</b></p>` + K.solve([
+            ['유클리드 호제법 (분자 = 몫 × 분모 + 나머지 를 되풀이)', steps],
+            ['몫을 차례로 적으면 연분수', `${m[1]}/${m[2]} = ${a[0]} + 1/(${a.slice(1).join(' + 1/(')}${')'.repeat(Math.max(0, a.length - 1))}  = ${cfStr(a)}`]
+          ]) + `<h4>근사분수</h4>${convTable(a, cs)}`;
         }
       },
       {
@@ -494,8 +662,12 @@ ${i4}x ≡ ${mod(i13 - i7, p1)}  (mod ${p1})</div>`;
         run(s) {
           const m = s.trim().match(/^(-?)(\d*)\.?(\d*)$/); if (!m) throw new Error('소수를 입력하세요. 예) 3.141592');
           const den = 10n ** B(m[3].length), num = B((m[1] || '') + (m[2] || '0') + m[3]), g = gcd(num, den);
-          const a = fracCF(num / g, den / g), cs = convergents(a);
-          return `<p>${s} = ${num / g}/${den / g} = <b>${cfStr(a)}</b></p><h4>근사분수</h4>${convTable(a, cs)}`;
+          const steps = [], a = fracCF(num / g, den / g, steps), cs = convergents(a);
+          return `<p>${s} = ${num / g}/${den / g} = <b>${cfStr(a)}</b></p>` + K.solve([
+            ['유한소수를 분수로', `${s} = ${num}/${den}${g > 1n ? `  → 약분 (÷${g}) → ${num / g}/${den / g}` : ''}`],
+            ['유클리드 호제법', steps],
+            ['몫을 차례로 적으면 연분수', cfStr(a)]
+          ]) + `<h4>근사분수</h4>${convTable(a, cs)}`;
         }
       },
       {
@@ -509,8 +681,11 @@ ${i4}x ≡ ${mod(i13 - i7, p1)}  (mod ${p1})</div>`;
           const res = quadCF(P, D, Q);
           if (!res) throw new Error(`${d} 는 제곱수입니다. 유리수이므로 “분수 → 연분수”를 쓰세요.`);
           const cs = convergents(res.a);
-          const val = (Number(a) + Number(b) * Math.sqrt(Number(d))) / Number(c);
-          return `<p>${esc(s)} ≈ ${K.num.dec(val, 12)} = <b>${cfStr(res.a, res.period)}</b></p><p>주기: ${res.period}</p><h4>근사분수</h4>${convTable(res.a.concat(res.a.slice(res.a.length - res.period)).slice(0, 20), convergents(res.a.concat(res.a.slice(res.a.length - res.period))).slice(0, 20))}`;
+          const val = (Number(a) + Number(b) * Math.sqrt(Number(d))) / Number(c), cnt = Math.min(res.a.length + 1, 16);
+          return `<p>${esc(s)} ≈ ${K.num.dec(val, 12)} = <b>${cfStr(res.a, res.period)}</b></p><p>주기: ${res.period}</p>` + K.solve([
+            ['(P + √D)/Q 꼴로 바꾸기', `${esc(s)} = (${P} + √${D})/${Q}   (Q 가 D − P² 를 나누도록 필요하면 분자·분모에 |Q| 를 곱함)`],
+            ['되풀이: a = ⌊(P + √D)/Q⌋,  P\' = aQ − P,  Q\' = (D − P\'²)/Q   (같은 (P, Q) 가 다시 나오면 순환)', [...quadLines(P, D, Q, cnt), ...(res.a.length + 1 > cnt ? ['…'] : [`→ (P, Q) 가 반복되어 주기 ${res.period}`])]]
+          ]) + `<h4>근사분수</h4>${convTable(res.a.concat(res.a.slice(res.a.length - res.period)).slice(0, 20), convergents(res.a.concat(res.a.slice(res.a.length - res.period))).slice(0, 20))}`;
           void cs;
         }
       },
@@ -525,7 +700,12 @@ ${i4}x ≡ ${mod(i13 - i7, p1)}  (mod ${p1})</div>`;
           // 정확한 항까지만
           let ok = a.length; for (let i = 0; i < cs.length; i++) { if (Math.abs(Number(cs[i][0]) / Number(cs[i][1]) - x0) < 1e-15 * Math.max(1, Math.abs(x0))) { ok = i + 1; break; } }
           const aa = a.slice(0, Math.min(ok + 1, a.length));
-          return `<p>${esc(s)} ≈ ${K.num.dec(x0, 15)}</p><p>= <b>${cfStr(aa)}${aa.length >= 12 ? ' …' : ''}</b></p><h4>근사분수</h4>${convTable(aa, convergents(aa))}`;
+          const lines = []; let y = x0;
+          for (let i = 0; i < Math.min(aa.length, 8); i++) { const t = Math.floor(y), f = y - t; lines.push(`x<sub>${i}</sub> = ${K.num.dec(y, 10)}  →  a<sub>${i}</sub> = ${t},  소수부 ${K.num.dec(f, 10)}${f > 1e-12 ? `,  x<sub>${i + 1}</sub> = 1/${K.num.dec(f, 10)}` : ''}`); if (f < 1e-12) break; y = 1 / f; }
+          return `<p>${esc(s)} ≈ ${K.num.dec(x0, 15)}</p><p>= <b>${cfStr(aa)}${aa.length >= 12 ? ' …' : ''}</b></p>` + K.solve([
+            ['되풀이: 정수부분을 떼어 a<sub>k</sub> 로 적고, 소수부분의 역수로 다시 시작', aa.length > 8 ? [...lines, '…'] : lines],
+            ['근사분수  p<sub>k</sub>/q<sub>k</sub> (점화식)', convLines(aa, convergents(aa), 8)]
+          ]) + `<h4>근사분수</h4>${convTable(aa, convergents(aa))}`;
         }
       }
     ]
@@ -562,15 +742,22 @@ ${i4}x ≡ ${mod(i13 - i7, p1)}  (mod ${p1})</div>`;
           const { co: [a, b], c } = linCoefs(l, r, ['x', 'y']);
           const steps = []; const [g, x0, y0] = egcd(abs(a), abs(b), steps);
           let h = `<p>${K.num.linStr([Number(a), Number(b)], ['x', 'y'])} = ${c},  gcd(${abs(a)}, ${abs(b)}) = ${g}</p>`;
-          if (c % g !== 0n) return h + `<p>${g} ∤ ${c} 이므로 <b>정수해가 없습니다.</b></p>`;
+          if (c % g !== 0n) return h + `<p>${g} ∤ ${c} 이므로 <b>정수해가 없습니다.</b></p>` + K.solve([
+            ['유클리드 호제법', steps],
+            ['정수해가 있을 조건: gcd(a, b) | c', `좌변 ${a}x ${b < 0n ? '−' : '+'} ${abs(b)}y 는 항상 ${g} 의 배수, 우변 ${c} 는 ${g} 의 배수가 아님 → 정수해 없음`]]);
           const sx = a < 0n ? -1n : 1n, sy = b < 0n ? -1n : 1n;
           let px = sx * x0 * (c / g), py = sy * y0 * (c / g);
           const dx = b / g, dy = a / g;
           // 보기 좋게 x 를 0 ≤ x < |dx| 로
           const k = floorDiv(px, abs(dx)); px -= k * abs(dx); py += k * abs(dx) * dy / dx;
-          h += `<div class="steps">${steps.join('\n')}</div>`;
           h += `<p>특수해: (x, y) = (${px}, ${py})</p><p>일반해: <b>x = ${px} ${dx >= 0n ? '+' : '−'} ${abs(dx)}t,  y = ${py} ${dy >= 0n ? '−' : '+'} ${abs(dy)}t</b>  (t 는 정수)</p>`;
-          return h;
+          return h + K.solve([
+            ['해가 있을 조건', `gcd(${abs(a)}, ${abs(b)}) = ${g} 이고 ${g} | ${c} → 정수해가 있음`],
+            ['유클리드 호제법', steps],
+            [`거꾸로 대입해서 ${abs(a)}·s + ${abs(b)}·t = ${g} 꼴 만들기`, egcdLines(abs(a), abs(b))],
+            [`양변에 ${c / g} 를 곱해 특수해 구하기`, [`${abs(a)}·(${x0}) + ${abs(b)}·(${y0}) = ${g}`, `→ x = ${sx * x0 * (c / g)}, y = ${sy * y0 * (c / g)}${px !== sx * x0 * (c / g) ? `  → 작은 값으로 옮기면 (${px}, ${py})` : ''}`, `검산: ${a}×(${px}) + ${b}×(${py}) = ${a * px + b * py}`]],
+            ['일반해: 특수해에 (b/g, −a/g) 의 정수배를 더함', `x = ${px} + (${b / g})t,  y = ${py} − (${a / g})t`]
+          ]);
         }
       },
       {
@@ -585,6 +772,10 @@ ${i4}x ≡ ${mod(i13 - i7, p1)}  (mod ${p1})</div>`;
           if (mod(c, g) !== 0n) return h + '<p><b>해가 없습니다.</b></p>';
           const count = g * m ** B(names.length - 1);
           h += `<p>법 ${m} 에서 해의 개수: <b>${count}</b></p>`;
+          h += K.solve([
+            ['해가 있을 조건: gcd(계수들, m) | 우변', `gcd(${co.join(', ')}, ${m}) = ${g},  ${g} | ${mod(c, m)} → 해가 있음`],
+            [`해의 개수 = g · m<sup>(미지수 개수 − 1)</sup>`, `${g} × ${m}<sup>${names.length - 1}</sup> = ${count}`]
+          ]);
           const list = []; const n = names.length, M = Number(m);
           if (M ** n <= 3e6) {
             const v = new Array(n).fill(0);
@@ -604,6 +795,13 @@ ${i4}x ≡ ${mod(i13 - i7, p1)}  (mod ${p1})</div>`;
           const d = B(m[1] || 1), c = B(m[2]);
           const f = pellFund(d); if (!f) throw new Error(`d = ${d} 는 제곱수입니다. 제곱수가 아닌 양의 정수여야 합니다.`);
           const [x1, y1] = f.pos;
+          const fullA = [f.cf.a[0]]; for (let i = 0; fullA.length <= (f.per % 2 ? 2 * f.per : f.per); i++) fullA.push(f.cf.a[1 + (i % f.per)]);
+          const pellParts = [
+            ['√d 를 연분수로 전개', [...quadLines(0n, d, 1n, Math.min(f.per + 1, 12)), `√${d} = ${cfStr(f.cf.a, f.cf.period)},  주기 r = ${f.per}`]],
+            ['근사분수 p<sub>k</sub>/q<sub>k</sub> 구하기', convLines(fullA, convergents(fullA), Math.min(fullA.length, 14))],
+            [`최소해: 주기 r 이 짝수면 (p<sub>r−1</sub>, q<sub>r−1</sub>), 홀수면 (p<sub>2r−1</sub>, q<sub>2r−1</sub>)`, [`r = ${f.per} (${f.per % 2 ? '홀수' : '짝수'}) → (x, y) = (${x1}, ${y1})`, `검산: ${x1}² − ${d}×${y1}² = ${x1 * x1 - d * y1 * y1}`, ...(f.neg ? [`x² − ${d}y² = −1 은 (p<sub>r−1</sub>, q<sub>r−1</sub>) = (${f.neg[0]}, ${f.neg[1]}):  ${f.neg[0] * f.neg[0] - d * f.neg[1] * f.neg[1]}`] : [])]],
+            ['나머지 해: (x + y√d) 에 최소해 (x₁ + y₁√d) 를 곱해 나감', `x' = x·${x1} + ${d}·y·${y1},   y' = x·${y1} + y·${x1}`]
+          ];
           let h = `<p>√${d} = ${cfStr(f.cf.a, f.cf.period)},  주기 ${f.per} (${f.per % 2 ? '홀수' : '짝수'})</p>`;
           h += `<p>x² − ${d}y² = 1 의 최소해: <b>(${x1}, ${y1})</b></p>`;
           if (f.neg) h += `<p>x² − ${d}y² = −1 의 최소해: <b>(${f.neg[0]}, ${f.neg[1]})</b></p>`; else h += `<p>주기가 짝수이므로 x² − ${d}y² = −1 은 해가 없습니다.</p>`;
@@ -616,12 +814,13 @@ ${i4}x ≡ ${mod(i13 - i7, p1)}  (mod ${p1})</div>`;
             if (!isFinite(lim) || lim > 5e6) return h + '<p class="muted">기본해 탐색 범위가 너무 커서 생략했습니다.</p>';
             const fund = [];
             for (let y = 0n; y <= B(Math.ceil(lim)); y++) { const X2 = c + d * y * y; if (X2 < 0n) continue; const x = isqrt(X2); if (x * x === X2) { fund.push([x, y]); if (x !== 0n) fund.push([-x, y]); } }
-            if (!fund.length) return h + `<p>x² − ${d}y² = ${c} 은 <b>정수해가 없습니다.</b></p>`;
+            if (!fund.length) return h + `<p>x² − ${d}y² = ${c} 은 <b>정수해가 없습니다.</b></p>` + K.solve(pellParts);
             h += `<h4>x² − ${d}y² = ${c} 의 해</h4><p>기본해: ${fund.map(([x, y]) => `(${x}, ${y})`).join(', ')}</p>`;
             h += `<p>각 기본해 (p, q) 와 (${x1}, ${y1}) 로 (x, y) = (p·${x1} + ${d}q·${y1}, p·${y1} + q·${x1}) 를 되풀이하면 모든 양의 해가 나옵니다.</p>`;
             h += `<div class="steps">${fund.filter(([x]) => x > 0n).map(([x, y]) => gen(x, y, 4).join(', ')).join('\n')}</div>`;
+            pellParts.push(['기본해 찾기: 0 ≤ y ≤ 한계 에서 ' + c + ' + ' + d + 'y² 가 제곱수인 y 를 찾음', `한계 = y₁·√(|c| / (2(x₁ ${c > 0n ? '+' : '−'} 1))) = ${K.num.dec(lim, 6)}\n` + fund.filter(([x]) => x >= 0n).map(([x, y]) => `y = ${y}: ${c} + ${d}×${y}² = ${x * x} = ${x}²`).join('\n')]);
           }
-          return h;
+          return h + K.solve(pellParts);
         }
       },
       {
@@ -645,6 +844,11 @@ ${i4}x ≡ ${mod(i13 - i7, p1)}  (mod ${p1})</div>`;
           const pos = sol.filter(([x, y]) => x >= 0n && y >= 0n);
           return `<p>x² ${b >= 0 ? '+' : '−'} ${Math.abs(b)}xy ${c >= 0 ? '+' : '−'} ${Math.abs(c)}y² = ${d},  D = b² − 4c = ${D}</p>
             <p>(2x + ${b}y)² − ${D}y² = ${4 * d} 로 바꾸어 풀었습니다.</p>
+            ${K.solve([
+              ['양변에 4 를 곱하고 완전제곱식 만들기', `4x² + ${4 * b}xy + ${4 * c}y² = ${4 * d}\n(2x + ${b}y)² − ${b * b}y² + ${4 * c}y² = ${4 * d}\n(2x + ${b}y)² − ${D}y² = ${4 * d}`],
+              ['X = 2x + by 로 두면 펠 방정식', `X² − ${D}y² = ${4 * d}  →  각 y 에 대해 ${D}y² + ${4 * d} 가 제곱수 X² 인지 확인`],
+              ['x 로 되돌리기', `x = (X − ${b}y) / 2   (짝수가 되는 경우만 정수해)${pos.length ? `\n예: y = ${pos[0][1]} → ${D}×${pos[0][1]}² + ${4 * d} = ${B(D) * pos[0][1] * pos[0][1] + 4n * B(d)} = ${isqrt(B(D) * pos[0][1] * pos[0][1] + 4n * B(d))}²,  x = ${pos[0][0]}` : ''}`]
+            ])}
             <p>|x|, |y| ≤ ${L} 에서 해 ${sol.length}개${pos.length ? `, 그중 x, y ≥ 0 인 해:` : ''}</p>
             ${pos.length ? `<div class="steps">${pos.sort((p, q) => (p[1] < q[1] ? -1 : 1)).slice(0, 60).map(([x, y]) => `(${x}, ${y})`).join(', ')}</div>` : sol.length ? '' : '<p><b>범위 안에 해가 없습니다.</b></p>'}`;
         }
