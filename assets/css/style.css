@@ -277,3 +277,11 @@ table.mat { border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .hl-red { color: var(--sun); } .hl-blue { color: var(--sat); } .hl-green { color: var(--ok); } .hl-magenta { color: #b0357f; } .hl-orange { color: #b8680a; }
 .calc-val { font-size: 20px; word-break: break-all; }
 .inp-wrap[hidden] { display: none; }
+
+/* ===== 풀이 과정 ===== */
+.result details.solve { margin: 14px 0 6px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px 4px; }
+.result details.solve > summary { cursor: pointer; font-weight: 700; color: var(--accent); padding: 4px 0; }
+.result details.solve ol { margin: 6px 0 4px; padding-left: 22px; }
+.result details.solve li { margin-bottom: 8px; }
+.result details.solve li > b { font-size: 14px; }
+.result details.solve .steps { margin: 4px 0 0; }

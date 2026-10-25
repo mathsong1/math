@@ -38,6 +38,29 @@
     };
   }
 
+  /** 사분위수 위치: h = (n−1)p 번째(0부터) 사이를 선형 보간 */
+  function quantileStep(s, p, name) {
+    const h = (s.length - 1) * p, lo = Math.floor(h), t = h - lo, n = s.length;
+    const pos = `위치 = (n−1)×${p} + 1 = (${n}−1)×${p} + 1 = ${d(h + 1)}번째`;
+    if (t < 1e-12) return `${name}: ${pos} → ${d(s[lo])}`;
+    return `${name}: ${pos} → ${d(s[lo])} + ${d(t)}×(${d(s[lo + 1])} − ${d(s[lo])}) = ${d(s[lo] + t * (s[lo + 1] - s[lo]))}`;
+  }
+  /** 통계값 풀이: s 는 정렬된 자료 */
+  function summarySteps(s, m, vp, n) {
+    const ss = vp * n, sum = S.sum(s);
+    const dev = s.map(v => `(${d(v)} − ${d(m, 5)})²`);
+    const parts = [
+      ['자료를 크기 순으로 정렬', K.sumTerms(s.map(v => d(v)), ', ', 30)],
+      ['평균  x̄ = Σx / n', `x̄ = (${K.sumTerms(s.map(v => d(v)))}) / ${n} = ${d(sum)} / ${n} = ${N.fmt2(m)}`],
+      ['편차제곱합  Σ(x − x̄)²', `Σ(x − x̄)² = ${K.sumTerms(dev)} = ${d(ss, 8)}`],
+      ['분산과 표준편차', [`모분산  σ² = Σ(x − x̄)² / n = ${d(ss, 8)} / ${n} = ${d(vp, 8)}`,
+        n > 1 ? `표본분산 s² = Σ(x − x̄)² / (n − 1) = ${d(ss, 8)} / ${n - 1} = ${d(ss / (n - 1), 8)}` : '표본분산은 n ≥ 2 일 때만 구합니다.',
+        `표준편차 = √분산  →  σ = √${d(vp, 8)} = ${d(Math.sqrt(vp), 8)}${n > 1 ? `,  s = √${d(ss / (n - 1), 8)} = ${d(Math.sqrt(ss / (n - 1)), 8)}` : ''}`]],
+      ['사분위수 (선형 보간)', [quantileStep(s, 0.25, 'Q1'), quantileStep(s, 0.5, '중앙값'), quantileStep(s, 0.75, 'Q3')]]
+    ];
+    return K.solve(parts);
+  }
+
   /* ---------------- 통계값 ---------------- */
   function summary(x, w) { // w: 도수 (선택)
     if (w) { const ex = []; x.forEach((v, i) => { for (let k = 0; k < w[i]; k++) ex.push(v); }); x = ex; }
@@ -57,7 +80,7 @@
       ['변동계수 CV', m ? pct(Math.sqrt(n > 1 ? vs : vp) / Math.abs(m)) : '−'],
       ['왜도 / 첨도', vp > 0 ? `${d(m3 / vp ** 1.5, 5)} / ${d(m4 / vp ** 2 - 3, 5)}` : '−']];
     const ftab = N.table([...freq].sort((a, b) => a[0] - b[0]).slice(0, 40).map(([v, f]) => [d(v), f, d(f / n, 4)]), ['값', '도수', '상대도수']);
-    return { html: N.table(rows) + `<h4>도수분포</h4>${ftab}`, mount: pmfPlot([...freq].sort((a, b) => a[0] - b[0]).map(([v, f]) => [v, f]), '도수') };
+    return { html: N.table(rows) + summarySteps(s, m, vp, n) + `<h4>도수분포</h4>${ftab}`, mount: pmfPlot([...freq].sort((a, b) => a[0] - b[0]).map(([v, f]) => [v, f]), '도수') };
   }
   register('statistics', 'summary', {
     ops: [
@@ -74,7 +97,16 @@
           const pts = E.points(s, 2), x = pts.map(p => p[0]), y = pts.map(p => p[1]), n = x.length;
           const mx = S.mean(x), my = S.mean(y), sxy = S.sum(x.map((v, i) => (v - mx) * (y[i] - my)));
           const sxx = S.sum(x.map(v => (v - mx) ** 2)), syy = S.sum(y.map(v => (v - my) ** 2)), r = sxy / Math.sqrt(sxx * syy);
-          return N.table([['n', n], ['x̄, ȳ', `${d(mx)}, ${d(my)}`], ['공분산 (÷n)', N.fmt2(sxy / n)], ['공분산 (÷(n−1))', N.fmt2(sxy / (n - 1))], ['상관계수 r', d(r, 8)], ['결정계수 r²', d(r * r, 8)]]);
+          const solve = K.solve([
+            ['평균', [`x̄ = (${K.sumTerms(x.map(v => d(v)))}) / ${n} = ${d(mx)}`, `ȳ = (${K.sumTerms(y.map(v => d(v)))}) / ${n} = ${d(my)}`]],
+            ['편차곱의 합  Sxy = Σ(x − x̄)(y − ȳ)', `Sxy = ${K.sumTerms(x.map((v, i) => `(${d(v - mx, 5)})(${d(y[i] - my, 5)})`))} = ${d(sxy, 8)}`],
+            ['편차제곱합  Sxx = Σ(x − x̄)²,  Syy = Σ(y − ȳ)²', [`Sxx = ${K.sumTerms(x.map(v => `(${d(v - mx, 5)})²`))} = ${d(sxx, 8)}`,
+              `Syy = ${K.sumTerms(y.map(v => `(${d(v - my, 5)})²`))} = ${d(syy, 8)}`]],
+            ['공분산', `Cov = Sxy / n = ${d(sxy, 8)} / ${n} = ${d(sxy / n, 8)}   (표본: Sxy / (n−1) = ${d(sxy / (n - 1), 8)})`],
+            ['상관계수  r = Sxy / √(Sxx·Syy)', [`r = ${d(sxy, 8)} / √(${d(sxx, 8)} × ${d(syy, 8)}) = ${d(sxy, 8)} / ${d(Math.sqrt(sxx * syy), 8)} = ${d(r, 8)}`,
+              `r² = ${d(r * r, 8)}  →  y 변동의 ${d(r * r * 100, 4)}% 를 x 로 설명`]]
+          ]);
+          return N.table([['n', n], ['x̄, ȳ', `${d(mx)}, ${d(my)}`], ['공분산 (÷n)', N.fmt2(sxy / n)], ['공분산 (÷(n−1))', N.fmt2(sxy / (n - 1))], ['상관계수 r', d(r, 8)], ['결정계수 r²', d(r * r, 8)]]) + solve;
         }
       }
     ]

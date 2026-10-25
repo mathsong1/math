@@ -26,6 +26,18 @@
     isDone(moduleId, featureId) {
       return !!(handlers[moduleId] && handlers[moduleId][featureId]);
     },
+    /**
+     * 풀이 과정 상자: [[소제목, 식 줄들], …]  → 접고 펼 수 있는 '풀이 과정'
+     *  식 줄은 문자열 또는 문자열 배열 (배열이면 줄바꿈으로 이어 붙임)
+     */
+    solve(parts) {
+      return `<details class="solve" open><summary>풀이 과정</summary><ol>${parts.map(([title, lines]) =>
+        `<li><b>${title}</b><div class="steps">${[].concat(lines).join('\n')}</div></li>`).join('')}</ol></details>`;
+    },
+    /** 항이 많으면 앞 3개 + … + 끝 1개 로 줄여서 'a + b + c' 꼴 */
+    sumTerms(terms, sep = ' + ', max = 8) {
+      return terms.length <= max ? terms.join(sep) : [...terms.slice(0, 3), '…', terms[terms.length - 1]].join(sep);
+    },
     esc(s) {
       return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     },
