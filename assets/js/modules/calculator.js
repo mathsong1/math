@@ -63,6 +63,49 @@
     const x = v.x; const ex = N.exact(x);
     return `<p class="calc-val"><b>${N.dec(x, 15)}</b></p>${ex !== N.dec(x, 10) && !/^-?[\d.]+$/.test(ex.replace(/<[^>]+>/g, '')) ? `<p class="muted">= ${ex}</p>` : ''}`;
   }
+  /* ---------- 일반 계산 풀이: 연산을 하나씩 기록 ---------- */
+  const sv = (v) => (v.q ? (v.q[1] === 1n ? big(v.q[0]) : v.q[1].toString().length > 9 ? N.dec(toNum(v), 10) : `${big(v.q[0])}/${big(v.q[1])}`) : N.dec(v.x, 10));
+  const sp = (v) => { const t = sv(v); return /^-|\//.test(t) ? `(${t})` : t; }; // 식 안에서 괄호
+  const prodStr = (from, cnt) => K.sumTerms([...Array(Math.max(0, Number(cnt))).keys()].map(i => String(from - B(i))), '×', 10) || '1';
+  function fnLine(name, args, r) {
+    const I = args.map(v => (v.q && v.q[1] === 1n ? v.q[0] : null)), ints = I.every(x => x !== null);
+    if (name === 'fact' && ints) return `${I[0]}! = ${I[0] > 0n ? prodStr(I[0], I[0]) : '1'} = ${sv(r)}`;
+    if (name === 'P' && ints) return `<sub>${I[0]}</sub>P<sub>${I[1]}</sub> = ${prodStr(I[0], I[1])}  (${I[0]} 부터 ${I[1]}개 곱함) = ${sv(r)}`;
+    if (name === 'C' && ints) return `<sub>${I[0]}</sub>C<sub>${I[1]}</sub> = <sub>${I[0]}</sub>P<sub>${I[1]}</sub> / ${I[1]}! = (${prodStr(I[0], I[1])}) / (${prodStr(I[1], I[1])}) = ${sv(r)}`;
+    if (name === 'H' && ints) return `<sub>${I[0]}</sub>H<sub>${I[1]}</sub> = <sub>${I[0] + I[1] - 1n}</sub>C<sub>${I[1]}</sub> = ${sv(r)}`;
+    if ((name === 'mod' || name === 'div') && ints) {
+      let q = I[0] / I[1]; if ((I[0] % I[1] !== 0n) && ((I[0] < 0n) !== (I[1] < 0n))) q -= 1n; const rem = I[0] - I[1] * q;
+      return `${I[0]} = ${I[1]} × (${q}) + ${rem}   (나머지는 0 이상 ${I[1] < 0n ? -I[1] : I[1]} 미만)  →  ${name === 'mod' ? `나머지 mod(${I[0]}, ${I[1]}) = ${rem}` : `몫 div(${I[0]}, ${I[1]}) = ${q}`}`;
+    }
+    if (name === 'gcd' && ints) return `gcd(${I[0]}, ${I[1]}) = ${sv(r)}  (유클리드 호제법)`;
+    if (name === 'lcm' && ints) return `lcm(${I[0]}, ${I[1]}) = ${I[0]} × ${I[1]} / gcd = ${I[0] * I[1]} / ${gcdB(I[0], I[1])} = ${sv(r)}`;
+    if (name === 'sqrt') return `√${sp(args[0])} = ${sv(r)}`;
+    return `${name}(${args.map(sv).join(', ')}) = ${sv(r)}`;
+  }
+  function addLine(sym, a, b, r) {
+    if (a.q && b.q && (a.q[1] !== 1n || b.q[1] !== 1n) && a.q[1] !== b.q[1]) { // 분수: 통분
+      const l = a.q[1] / gcdB(a.q[1], b.q[1]) * b.q[1], an = a.q[0] * (l / a.q[1]), bn = b.q[0] * (l / b.q[1]);
+      const sum = `${sym === '+' ? an + bn : an - bn}/${l}`;
+      if (l.toString().length <= 9) return `${sp(a)} ${sym} ${sp(b)} = ${an}/${l} ${sym} ${bn < 0n ? `(${bn})` : bn}/${l} = ${sum}${sum === sv(r) ? '' : ` = ${sv(r)}`}   (분모 ${l} 로 통분)`;
+    }
+    return `${sp(a)} ${sym} ${sp(b)} = ${sv(r)}`;
+  }
+  function evalTraced(s) {
+    const lines = [], rec = (t) => { if (lines.length < 25) lines.push(t); };
+    const T = Object.assign({}, O, {
+      add: (a, b) => { const r = O.add(a, b); rec(addLine('+', a, b, r)); return r; },
+      sub: (a, b) => { const r = O.sub(a, b); rec(addLine('−', a, b, r)); return r; },
+      mul: (a, b) => { const r = O.mul(a, b); rec(`${sp(a)} × ${sp(b)} = ${sv(r)}`); return r; },
+      div: (a, b) => { // 정수 ÷ 정수 가 그대로 기약분수이면 분수를 쓴 것일 뿐이므로 기록하지 않음
+        const r = O.div(a, b), plain = a.q && b.q && a.q[1] === 1n && b.q[1] === 1n && r.q && r.q[0] === a.q[0] && r.q[1] === b.q[0];
+        if (!plain) rec(`${sp(a)} ÷ ${sp(b)} = ${sv(r)}${sv(r).includes('/') ? '  (약분)' : ''}`); return r;
+      },
+      pow: (a, b) => { const r = O.pow(a, b); rec(`${sp(a)}<sup>${sv(b)}</sup> = ${sv(r)}`); return r; },
+      fn: (name, args) => { const r = O.fn(name, args); rec(fnLine(name, args, r)); return r; }
+    });
+    const v = E.evalWith(s, [], T, {});
+    return { v, lines };
+  }
   const KEYS = [['7'], ['8'], ['9'], ['÷', '/', 'op'], ['(', '('], [')', ')'],
     ['4'], ['5'], ['6'], ['×', '*', 'op'], ['xʸ', '^', 'op'], ['√', 'sqrt()'],
     ['1'], ['2'], ['3'], ['−', '-', 'op'], ['n!', '!'], ['π', 'pi'],
@@ -79,8 +122,8 @@
       help: [['2^100', ''], ['50!', ''], ['1/3 + 1/6', '분수 그대로'], ['C(100, 50)', '조합'], ['P(10, 3) + mod(-7, 3)', '순열, 나머지'], ['sin(30°) + sqrt(2)', ''], ['(1/2)^10 + 3/4', '분수의 거듭제곱']],
       run(s) {
         if (/i\)?$/.test(s.trim()) && /\di|\bi\b/.test(s)) throw new Error('복소수는 “행렬활용 → 연산 → 복소수 연산”에서 계산하세요.');
-        const v = E.evalWith(s, [], O, {});
-        return show(v);
+        const { v, lines } = evalTraced(s);
+        return show(v) + (lines.length ? K.solve([['계산 순서대로 (괄호·함수 → 거듭제곱 → 곱셈·나눗셈 → 덧셈·뺄셈)', lines.length >= 25 ? [...lines, '…'] : lines]]) : '');
       }
     }]
   });
