@@ -101,6 +101,26 @@
     if (neg && a <= 2n ** 31n) rows.push(['32비트 2의 보수', ((1n << 32n) + v).toString(2).replace(/\B(?=(\d{4})+(?!\d))/g, ' ')]);
     return rows;
   };
+  /** 'a 연산 b' 꼴이면 2진수로 자리 맞춰 계산 과정을 보여 줌 */
+  function bitSteps(s, v) {
+    const t = s.replace(/\bAND\b/gi, '&').replace(/\bOR\b/gi, '|').replace(/\bXOR\b/gi, '^').replace(/\bNOT\b/gi, '~').trim();
+    const lit = '(0[xX][0-9a-fA-F]+|0[bB][01]+|0[oO][0-7]+|\\d+)';
+    const bin = (x, w) => (x < 0n ? '-' : '') + (x < 0n ? -x : x).toString(2).padStart(w, '0');
+    let m = t.match(new RegExp(`^${lit}\\s*(&|\\||\\^)\\s*${lit}$`));
+    if (m) {
+      const a = B(m[1]), b = B(m[3]), w = Math.max(a.toString(2).length, b.toString(2).length, v.toString(2).length);
+      const rule = { '&': '두 비트가 모두 1 이면 1', '|': '하나라도 1 이면 1', '^': '두 비트가 다르면 1' }[m[2]];
+      return K.solve([['2진수로 바꾸어 자리를 맞춤', `  ${bin(a, w)}  (${a})\n${m[2]} ${bin(b, w)}  (${b})\n= ${bin(v, w)}  (${v})`], [`각 자리마다: ${rule}`, `결과 ${bin(v, w)}₍₂₎ = ${v}`]]);
+    }
+    m = t.match(new RegExp(`^${lit}\\s*(<<|>>)\\s*(\\d+)$`));
+    if (m) {
+      const a = B(m[1]), k = Number(m[3]);
+      return K.solve([[m[2] === '<<' ? `왼쪽으로 ${k}칸: 오른쪽에 0 을 ${k}개 붙임 = ×2<sup>${k}</sup>` : `오른쪽으로 ${k}칸: 오른쪽 ${k}자리를 버림 = ÷2<sup>${k}</sup> (내림)`, `${bin(a, 1)}₍₂₎ → ${bin(v, 1)}₍₂₎\n${a} ${m[2] === '<<' ? '×' : '÷'} ${2 ** k} ${m[2] === '<<' ? '=' : '→'} ${v}`]]);
+    }
+    m = t.match(new RegExp(`^~\\s*${lit}$`));
+    if (m) { const a = B(m[1]); return K.solve([['NOT: 모든 비트를 뒤집음 (2의 보수에서 ~a = −a − 1)', `~${a} = −${a} − 1 = ${v}`]]); }
+    return '';
+  }
   register('calculator', 'scientific', {
     ops: [{
       id: 'bit', name: '비트 · 논리 · 시프트 연산',
@@ -109,7 +129,7 @@
       help: [['12 & 10', ''], ['0xFF ^ 0b1010', ''], ['5 << 3', ''], ['~5', ''], ['-16 >>> 28', '32비트 부호 없는 시프트'], ['(0xF0 | 0x0F) & 0x3C', '']],
       run(s) {
         const { v } = bitEval(s);
-        return `<p class="calc-val"><b>${v}</b></p>` + N.table(baseRows(v));
+        return `<p class="calc-val"><b>${v}</b></p>` + N.table(baseRows(v)) + bitSteps(s, v);
       }
     }]
   });
@@ -127,7 +147,13 @@
         return N.table([[`중복순열 <sub>${m}</sub>Π<sub>${n}</sub> = mⁿ`, big(B(m) ** B(n))], [`중복조합 <sub>${m}</sub>H<sub>${n}</sub>`, big(C.comb(m + n - 1, n))],
           [`전사함수 개수 T(${m}, ${n})`, big(C.surj(m, n))], [`제2종 스털링 수 S(${m}, ${n})`, big(C.stirling2(m, n))], [`제1종 스털링 수 c(${m}, ${n})`, big(C.stirling1(m, n))],
           [`벨 수 B(${m})`, big(C.bell(m))], [`자연수 분할 p(${m}, ${n})`, C.partK(m, n).toString()], [`분할수 p(${m})`, pm.toString()],
-          [`순열 <sub>${m}</sub>P<sub>${n}</sub>`, big(C.perm(m, n))], [`조합 <sub>${m}</sub>C<sub>${n}</sub>`, big(C.comb(m, n))]]);
+          [`순열 <sub>${m}</sub>P<sub>${n}</sub>`, big(C.perm(m, n))], [`조합 <sub>${m}</sub>C<sub>${n}</sub>`, big(C.comb(m, n))]]) + K.solve([
+          ['중복순열 mⁿ,  중복조합 <sub>m</sub>H<sub>n</sub> = <sub>m+n−1</sub>C<sub>n</sub>', `${m}<sup>${n}</sup> = ${big(B(m) ** B(n))},   <sub>${m + n - 1}</sub>C<sub>${n}</sub> = ${big(C.comb(m + n - 1, n))}`],
+          ['순열 m!/(m−n)!,  조합 m!/(n!(m−n)!)', `<sub>${m}</sub>P<sub>${n}</sub> = ${big(C.perm(m, n))},   <sub>${m}</sub>C<sub>${n}</sub> = ${big(C.perm(m, n))} / ${n}! = ${big(C.comb(m, n))}`],
+          ['전사함수 개수 T(m, n) = n!·S(m, n)', `${n}! × ${big(C.stirling2(m, n))} = ${big(C.surj(m, n))}`],
+          ['스털링 수 점화식  S(m, n) = S(m−1, n−1) + n·S(m−1, n),  c(m, n) = c(m−1, n−1) + (m−1)·c(m−1, n)', m >= 1 ? `S(${m}, ${n}) = ${big(C.stirling2(m - 1, n - 1))} + ${n}×${big(C.stirling2(m - 1, n))} = ${big(C.stirling2(m, n))}` : 'S(0, 0) = 1'],
+          ['벨 수 B(m) = Σ S(m, k),  분할수 p(m) = Σ p(m, k)', `B(${m}) = ${big(C.bell(m))},   p(${m}) = ${pm}`]
+        ]);
       }
     }]
   });
@@ -147,7 +173,11 @@
         const cf = sq * sq === n ? `√${v} = ${sq} (제곱수)` : (() => { const r = nt.quadCF(0n, n, 1n); return `√${v} = ${nt.cfStr(r.a, r.period)}`; })();
         return N.table([['소인수분해', [...f].map(([p, e]) => (e > 1 ? `${p}<sup>${e}</sup>` : p)).join(' × ') || '1'], ['오일러 함수 φ(n)', phi.toString()], ['최소 원시근 lpR(n)', pr],
           ['√n 의 연분수 CoFr(n)', cf], ['교란 수 D(n)', v <= 3000 ? big(C.derange(v)) : '너무 큼'], ['카탈란 수 Cat(n)', v <= 3000 ? big(C.catalan(v)) : '너무 큼'],
-          ['감마함수 Γ(n) = (n−1)!', v <= 3000 ? big(C.fact(v - 1)) : N.dec(Math.exp(E.lgamma(v)), 12)]]);
+          ['감마함수 Γ(n) = (n−1)!', v <= 3000 ? big(C.fact(v - 1)) : N.dec(Math.exp(E.lgamma(v)), 12)]]) + K.solve([
+          ['φ(n) = n · Π(1 − 1/p)  (p 는 n 의 소인수)', f.size ? `${n} × ${[...f.keys()].map(p => `(1 − 1/${p})`).join(' × ')} = ${phi}` : 'φ(1) = 1'],
+          ['원시근: 1, 2, 4, pᵏ, 2pᵏ 꼴일 때만 존재.  a^(φ/q) ≢ 1 (q 는 φ 의 소인수) 인 가장 작은 a', hasPR ? `존재함 → 최소 원시근 ${pr}` : `${n} 은 그 꼴이 아니므로 없음`],
+          ['교란 수 D(n) = (n−1)(D(n−1) + D(n−2)),  카탈란 수 = <sub>2n</sub>C<sub>n</sub>/(n+1)', v <= 3000 && v >= 3 ? `D(${v}) = ${v - 1} × (${big(C.derange(v - 1))} + ${big(C.derange(v - 2))}) = ${big(C.derange(v))}` : '작은 n 에서 정의대로 계산']
+        ]);
       }
     }]
   });
@@ -165,7 +195,11 @@
         if (k.startsWith('chi') || k.startsWith('χ')) return `<p>P(χ²(${a[0]}) ≤ ${a[1]}) = <b>${d(S.chi2.cdf(a[1], a[0]))}</b></p>`;
         if (k === 't') return `<p>P(T(${a[0]}) ≤ ${a[1]}) = <b>${d(S.tdist.cdf(a[1], a[0]))}</b></p>`;
         if (k === 'f') return `<p>P(F(${a[0]}, ${a[1]}) ≤ ${a[2]}) = <b>${d(S.fdist.cdf(a[2], a[0], a[1]))}</b></p>`;
-        return `<p>X ~ B(${a[0]}, ${a[1]}):  P(X ≤ ${a[2]}) = <b>${d(S.binom.cdf(a[2], a[0], a[1]))}</b>,  P(X = ${a[2]}) = ${d(S.binom.pmf(a[2], a[0], a[1]))}</p>`;
+        const [n, p, k2] = a;
+        return `<p>X ~ B(${n}, ${p}):  P(X ≤ ${k2}) = <b>${d(S.binom.cdf(k2, n, p))}</b>,  P(X = ${k2}) = ${d(S.binom.pmf(k2, n, p))}</p>` + (Number.isInteger(n) && Number.isInteger(k2) && k2 >= 0 && k2 <= n ? K.solve([
+          ['P(X = k) = <sub>n</sub>C<sub>k</sub> p<sup>k</sup>(1 − p)<sup>n−k</sup>', `<sub>${n}</sub>C<sub>${k2}</sub> × ${p}<sup>${k2}</sup> × ${N.dec(1 - p, 10)}<sup>${n - k2}</sup> = ${K.comb ? K.comb.comb(n, k2) : ''} × ${d(p ** k2)} × ${d((1 - p) ** (n - k2))} = ${d(S.binom.pmf(k2, n, p))}`],
+          ['P(X ≤ k) = P(X = 0) + … + P(X = k)', `${K.sumTerms([...Array(k2 + 1).keys()].map(i => N.dec(S.binom.pmf(i, n, p), 6)))} = ${d(S.binom.cdf(k2, n, p))}`]
+        ]) : '');
       }
     }]
   });

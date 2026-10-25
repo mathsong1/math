@@ -9,6 +9,7 @@
   const f = (x) => N.fmt(x), d = (x) => N.dec(x, 8);
   const plotIn = (el, opt) => { const box = document.createElement('div'); el.appendChild(box); return K.plot.create(box, opt); };
   const fx = (src) => E.compile(src.replace(/^\s*(y|f\(x\))\s*=/, ''), ['x']);
+  const fp = (v) => { const t = f(v); return /^-|\//.test(t) ? `(${t})` : t; }; // 곱셈식 안에서 괄호
 
   /* ---------- 공통: 이동 변환 ---------- */
   /** '평행 a, b' / 'x축' / 'y축' / '원점' / 'y=x' / 'y=-x' / '회전 θ' / '확대 k' / '점 a, b' / 'x=a' / 'y=b' → {map, desc} */
@@ -28,6 +29,20 @@
     throw new Error('이동: 평행 a, b / x축 / y축 / 원점 / y=x / y=-x / 회전 θ / 확대 k / 점 a, b / x=a / y=b');
   }
   const moveHelp = 'f(x) ; 이동  — 이동은 평행 a, b · x축 · y축 · 원점 · y=x · y=-x · 회전 θ(도) · 확대 k (또는 kx, ky)';
+  /** 이동 종류별 식 바꾸는 규칙 */
+  const MOVE_RULE = {
+    평행: '(a, b) 평행이동: x 대신 x − a, y 대신 y − b',
+    x축: 'x 축 대칭: y 대신 −y',
+    y축: 'y 축 대칭: x 대신 −x',
+    원점: '원점 대칭: x 대신 −x, y 대신 −y',
+    'y=x': 'y = x 대칭: x 와 y 를 바꿈 (역함수)',
+    'y=-x': 'y = −x 대칭: x 대신 −y, y 대신 −x',
+    회전: 'θ 회전: 점 (x, y) → (x cosθ − y sinθ, x sinθ + y cosθ),  식에는 −θ 회전한 좌표를 대입',
+    확대: '(kx, ky) 배 확대: x 대신 x/kx, y 대신 y/ky',
+    점: '점 (a, b) 대칭: x 대신 2a − x, y 대신 2b − y',
+    'x=': '직선 x = a 대칭: x 대신 2a − x',
+    'y=': '직선 y = b 대칭: y 대신 2b − y'
+  };
 
   /* ---------------- 평면곡선1  y = f(x) 와 이동 ---------------- */
   register('graph', 'curve1', {
@@ -42,6 +57,11 @@
           const move = mv ? parseMove(mv) : null;
           let h = `<p>${list.map((t, i) => `y<sub>${i + 1}</sub> = ${K.esc(t)}`).join(',  ')}</p>`;
           if (move) h += `<p>${move.desc}${move.eq && list.length === 1 ? ` → <b>${K.esc(move.eq(list[0].replace(/^\s*y\s*=/, '')))}</b>` : ''}</p>`;
+          if (move) h += K.solve([
+            ['이동한 그래프 위의 점 (x, y) 를 거꾸로 옮기면 처음 그래프 위에 있음', MOVE_RULE[mv.replace(/\s/g, '').replace(/[\d.,\-−°]+$/, '').replace(/^(평행|회전|확대|점).*/, '$1')] || move.desc],
+            ...(move.eq && list.length === 1 ? [['y = f(x) 에 대입', K.esc(move.eq(list[0].replace(/^\s*y\s*=/, '')))]] : []),
+            ['예: 그래프 위의 한 점이 옮겨지는 곳', (() => { const x0 = 1, y0 = fns[0](x0), q = move.map([x0, y0]); return isFinite(y0) ? `(${d(x0)}, ${d(y0)}) → (${d(q[0])}, ${d(q[1])})` : '−'; })()]
+          ]);
           return {
             html: h, mount(el) {
               const pl = plotIn(el, { view: [-10, 10, -7, 7], equal: true });
@@ -60,7 +80,14 @@
         help: [['sin(x); 2, 1, 0, 0', '진폭 2배'], ['sin(x); 1, 2, 0, 0', '주기 절반'], ['x^2; 1, 1, 2, -3', '꼭짓점 (2, −3)'], ['sqrt(x); -1, 1, 0, 2', '']],
         run(s) {
           const [src, p] = s.split(';'); const g = fx(src.trim()), [a, b, c, dd] = E.nums(p);
-          return { html: `<p>y = ${f(a)}·f(${f(b)}(x − ${f(c)})) + ${f(dd)}</p><p class="muted">a: 세로 확대·대칭, b: 가로 확대(주기 1/|b| 배), c: 가로 평행이동, d: 세로 평행이동</p>`, mount(el) { plotIn(el, { view: [-10, 10, -7, 7], equal: true }).add({ type: 'fx', f: g, label: `y = ${src.trim()}` }).add({ type: 'fx', f: x => a * g(b * (x - c)) + dd, label: '바꾼 그래프' }); } };
+          return { html: `<p>y = ${f(a)}·f(${f(b)}(x − ${f(c)})) + ${f(dd)}</p><p class="muted">a: 세로 확대·대칭, b: 가로 확대(주기 1/|b| 배), c: 가로 평행이동, d: 세로 평행이동</p>` + K.solve([
+            ['y = f(x) 에서 차례로 바꾸기', [
+              `① x 대신 ${f(b)}x : 가로로 1/${f(Math.abs(b))} 배${b < 0 ? ', y 축 대칭' : ''}`,
+              `② x 대신 x − ${f(c)} : x 축 방향으로 ${f(c)} 만큼 평행이동`,
+              `③ 전체에 ${f(a)} 곱하기 : 세로로 ${f(Math.abs(a))} 배${a < 0 ? ', x 축 대칭' : ''}`,
+              `④ ${f(dd)} 더하기 : y 축 방향으로 ${f(dd)} 만큼 평행이동`]],
+            ['점이 옮겨지는 규칙', `(x, y) → (x/${fp(b)} + ${fp(c)}, ${fp(a)}·y + ${fp(dd)})`]
+          ]), mount(el) { plotIn(el, { view: [-10, 10, -7, 7], equal: true }).add({ type: 'fx', f: g, label: `y = ${src.trim()}` }).add({ type: 'fx', f: x => a * g(b * (x - c)) + dd, label: '바꾼 그래프' }); } };
         }
       }
     ]
@@ -82,7 +109,12 @@
             const o = move.map([0, 0]), ex = V2(move.map([1, 0]), o), ey = V2(move.map([0, 1]), o), det = ex[0] * ey[1] - ex[1] * ey[0];
             G = (x, y) => { const px = x - o[0], py = y - o[1]; return F((px * ey[1] - py * ey[0]) / det, (ex[0] * py - ex[1] * px) / det); };
           }
-          return { html: `<p>${K.esc(src)}${move ? `  →  ${move.desc}` : ''}</p>`, mount(el) { const pl = plotIn(el, { view: [-8, 8, -6, 6], equal: true }).add({ type: 'implicit', F, label: '처음 곡선' }); if (G) pl.add({ type: 'implicit', F: G, label: '이동한 곡선', color: '#d0342c' }); } };
+          const key = mv ? mv.replace(/\s/g, '').replace(/[\d.,\-−°]+$/, '').replace(/^(평행|회전|확대|점).*/, '$1').replace(/^([xy]=).*/, '$1') : '';
+          return { html: `<p>${K.esc(src)}${move ? `  →  ${move.desc}` : ''}</p>` + (move ? K.solve([
+            ['F(x, y) = 0 꼴로', `${K.esc(l.trim())} − (${K.esc(r.trim())}) = 0`],
+            ['이동한 곡선 위의 점을 거꾸로 옮겨 F 에 대입', MOVE_RULE[key] || move.desc],
+            ['예: 점이 옮겨지는 곳', `(1, 0) → (${move.map([1, 0]).map(d).join(', ')}),  (0, 1) → (${move.map([0, 1]).map(d).join(', ')})`]
+          ]) : ''), mount(el) { const pl = plotIn(el, { view: [-8, 8, -6, 6], equal: true }).add({ type: 'implicit', F, label: '처음 곡선' }); if (G) pl.add({ type: 'implicit', F: G, label: '이동한 곡선', color: '#d0342c' }); } };
         }
       },
       {
@@ -93,7 +125,10 @@
           const [src, rg] = s.split(';'); const r = E.compile(src.replace(/θ/g, 't').replace(/^\s*r\s*=/, ''), ['t']); const [t0, t1] = rg ? E.nums(rg) : [0, 2 * Math.PI];
           const pts = []; for (let i = 0; i <= 400; i++) { const t = t0 + (t1 - t0) * i / 400, v = r(t); pts.push([v * Math.cos(t), v * Math.sin(t)]); }
           const area = 0.5 * N.integrate(t => { const v = r(t); return isFinite(v) ? v * v : 0; }, t0, t1);
-          return { html: `<p>r = ${K.esc(src)},  ${d(t0)} ≤ θ ≤ ${d(t1)}</p><p>휩쓴 넓이 ½∫r²dθ = ${N.exact(area)}</p>`, mount(el) { plotIn(el, { view: K.plot.autoView([pts], 0.15), equal: true }).add({ type: 'polar', r, t: [t0, t1], n: 3000, label: `r = ${src.trim()}` }); } };
+          return { html: `<p>r = ${K.esc(src)},  ${d(t0)} ≤ θ ≤ ${d(t1)}</p><p>휩쓴 넓이 ½∫r²dθ = ${N.exact(area)}</p>` + K.solve([
+            ['극좌표 → 직교좌표  x = r cos θ,  y = r sin θ', [0, 1, 2, 3].map(k => { const t = t0 + (t1 - t0) * k / 4, v = r(t); return `θ = ${d(t)}: r = ${d(v)} → (${d(v * Math.cos(t))}, ${d(v * Math.sin(t))})`; })],
+            ['부채꼴 넓이를 모음  S = ½∫ r² dθ', `½ ∫<sub>${d(t0)}</sub><sup>${d(t1)}</sup> (${K.esc(src.trim())})² dθ = ${N.exactShort(area)}  (수치적분)`]
+          ]), mount(el) { plotIn(el, { view: K.plot.autoView([pts], 0.15), equal: true }).add({ type: 'polar', r, t: [t0, t1], n: 3000, label: `r = ${src.trim()}` }); } };
         }
       }
     ]
@@ -124,7 +159,10 @@
         const [X, Y] = make(...ps), [t0, t1] = range ? range(...ps) : [0, 2 * Math.PI];
         const pts = []; for (let i = 0; i <= 600; i++) { const t = t0 + (t1 - t0) * i / 600; pts.push([X(t), Y(t)]); }
         let len = 0; for (let i = 1; i < pts.length; i++) { const dl = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); if (isFinite(dl) && dl < 5) len += dl; }
-        return { html: `<p><b>${name}</b>  (${params.split(', ').map((q, i) => `${q} = ${f(ps[i])}`).join(', ')})</p><p class="muted">${desc}</p><p>그린 구간 θ ∈ [${d(t0)}, ${d(t1)}],  곡선의 길이 ≈ ${d(len)}</p>`, mount(el) { plotIn(el, { view: K.plot.autoView([pts], 0.12), equal: true }).add({ type: 'param', x: X, y: Y, t: [t0, t1], n: 5000, label: name.replace(/ \(.*/, '') }); } };
+        return { html: `<p><b>${name}</b>  (${params.split(', ').map((q, i) => `${q} = ${f(ps[i])}`).join(', ')})</p><p class="muted">${desc}</p><p>그린 구간 θ ∈ [${d(t0)}, ${d(t1)}],  곡선의 길이 ≈ ${d(len)}</p>` + K.solve([
+          ['매개변수에 값을 넣어 점 찍기', [0, 1, 2, 3].map(k => { const t = t0 + (t1 - t0) * k / 4; return `θ = ${d(t)}: (${d(X(t))}, ${d(Y(t))})`; })],
+          ['곡선의 길이  L = ∫ √(x′(θ)² + y′(θ)²) dθ', `짧은 선분 600개의 길이를 더해 근사 → L ≈ ${d(len)}`]
+        ]), mount(el) { plotIn(el, { view: K.plot.autoView([pts], 0.12), equal: true }).add({ type: 'param', x: X, y: Y, t: [t0, t1], n: 5000, label: name.replace(/ \(.*/, '') }); } };
       }
     })), {
       id: 'custom', name: '직접 입력  x(t), y(t)',
@@ -149,7 +187,11 @@
         const F = fx(a), G = fx(b), [x0, x1] = rg ? E.nums(rg) : [-10, 10], h = (x) => F(x) - G(x);
         const rs = N.roots(h, x0, x1, 8000).filter(x => isFinite(F(x)) && isFinite(G(x)) && Math.abs(h(x)) < 1e-7 * Math.max(1, Math.abs(F(x))));
         return {
-          html: `<p>f(x) = ${K.esc(a)},  g(x) = ${K.esc(b)},  [${d(x0)}, ${d(x1)}]</p>` + (rs.length ? N.table(rs.map((x, i) => [i + 1, N.exact(x), N.exact(F(x))]), ['#', 'x', 'y']) : '<p><b>교점이 없습니다.</b></p>'),
+          html: `<p>f(x) = ${K.esc(a)},  g(x) = ${K.esc(b)},  [${d(x0)}, ${d(x1)}]</p>` + (rs.length ? N.table(rs.map((x, i) => [i + 1, N.exact(x), N.exact(F(x))]), ['#', 'x', 'y']) : '<p><b>교점이 없습니다.</b></p>') + K.solve([
+            ['교점의 x 좌표는 h(x) = f(x) − g(x) = 0 의 근', `h(x) = (${K.esc(a)}) − (${K.esc(b)})`],
+            ['구간을 잘게 나누어 h 의 부호가 바뀌거나 0 에 닿는 곳을 찾고, 이분법·뉴턴법으로 좁힘', rs.length ? rs.slice(0, 8).map((x, i) => `P${i + 1}: h(${d(x - 0.01)}) = ${d(h(x - 0.01))},  h(${d(x + 0.01)}) = ${d(h(x + 0.01))}  →  x ≈ ${d(x)}`) : '부호가 바뀌는 곳이 없음'],
+            ['y 좌표는 f 에 대입 (g 에 대입해도 같음)', rs.slice(0, 8).map((x, i) => `P${i + 1}: f(${d(x)}) = ${d(F(x))},  g(${d(x)}) = ${d(G(x))}`).join('\n') || '−']
+          ]),
           mount(el) { const pts = []; for (let i = 0; i <= 200; i++) { const x = x0 + (x1 - x0) * i / 200; pts.push([x, F(x)], [x, G(x)]); } const v = K.plot.autoView([pts], 0.1); v[0] = x0; v[1] = x1; plotIn(el, { view: v }).add({ type: 'fx', f: F, label: `f(x) = ${a}` }).add({ type: 'fx', f: G, label: `g(x) = ${b}` }).add({ type: 'points', pts: rs.map((x, i) => [x, F(x), `P${i + 1}`]) }); }
         };
       }
@@ -177,7 +219,12 @@
         const polyTxt = poly && poly.length > 1 ? `<p>f(x) = ${N.polyStr(poly)},  f′(x) = ${N.polyStr(poly.slice(1).map((v, i) => v * (i + 1)))},  f″(x) = ${N.polyStr(poly.slice(2).map((v, i) => v * (i + 2) * (i + 1)))}</p>` : `<p>f(x) = ${K.esc(src)}</p>`;
         return {
           html: polyTxt + N.table([['x 절편 (f = 0)', r0.map(N.exact).join(', ') || '없음'], ['극값 (f′ = 0)', r1.map(x => `${kind(x)} (${N.exact(x)}, ${N.exact(F(x))})`).join(',  ') || '없음'], ['변곡점 (f″ = 0)', r2.filter(x => D2(x - 1e-4) * D2(x + 1e-4) < 0).map(x => `(${N.exact(x)}, ${N.exact(F(x))})`).join(',  ') || '없음'],
-            ['증가·감소', inc.join('<br>')], ['오목·볼록', conc.join('<br>')]]),
+            ['증가·감소', inc.join('<br>')], ['오목·볼록', conc.join('<br>')]]) + K.solve([
+              ['도함수 구하기', poly && poly.length > 1 ? `f′(x) = ${N.polyStr(poly.slice(1).map((v, i) => v * (i + 1)))},   f″(x) = ${N.polyStr(poly.slice(2).map((v, i) => v * (i + 2) * (i + 1)))}` : 'f′, f″ 는 수치 미분 (f(x+h) − f(x−h))/(2h) 로 계산'],
+              ['f′(x) = 0 → 극값 후보,  f″ 의 부호로 판정 (f″ < 0 극대, f″ > 0 극소)', r1.length ? r1.map(x => `x = ${d(x)}: f″ = ${d(D2(x))} → ${kind(x)},  f = ${d(F(x))}`) : 'f′ = 0 인 점 없음'],
+              ['증감표: f′ 의 부호 (구간 가운데 값으로 확인)', inc.map((t, i) => `${t}   (f′(${d((cuts[i] + cuts[i + 1]) / 2)}) = ${d(D1((cuts[i] + cuts[i + 1]) / 2))})`)],
+              ['f″(x) = 0 이고 좌우 부호가 바뀌면 변곡점', r2.length ? r2.map(x => `x = ${d(x)}: f″(${d(x - 1e-4)}) ${D2(x - 1e-4) > 0 ? '> 0' : '< 0'},  f″(${d(x + 1e-4)}) ${D2(x + 1e-4) > 0 ? '> 0' : '< 0'} → ${D2(x - 1e-4) * D2(x + 1e-4) < 0 ? '변곡점' : '변곡점 아님'}`) : 'f″ = 0 인 점 없음']
+            ]),
           mount(el) { const pts = []; for (let i = 0; i <= 200; i++) { const x = a + (b - a) * i / 200; pts.push([x, F(x)]); } const v = K.plot.autoView([pts], 0.15); v[0] = a; v[1] = b; plotIn(el, { view: v }).add({ type: 'fx', f: F, label: 'f(x)', width: 2.5 }).add({ type: 'fx', f: D1, label: "f′(x)", dash: [6, 4] }).add({ type: 'fx', f: D2, label: "f″(x)", dash: [2, 3] }).add({ type: 'points', pts: [...r1.map(x => [x, F(x), kind(x)]), ...r0.map(x => [x, 0])] }); }
         };
       }
@@ -204,7 +251,10 @@
             else throw new Error('이동은 평행 a, b, c / 점 a, b, c / 회전 P ; 축 ; 각');
           }
           let len = 0; for (let i = 1; i < pts.length; i++) len += Math.hypot(...pts[i].map((v, k) => v - pts[i - 1][k]));
-          return { html: `<p>x = ${K.esc(xs)}, y = ${K.esc(ys)}, z = ${K.esc(zs)},  ${d(t0)} ≤ t ≤ ${d(t1)}</p><p>곡선의 길이 ≈ ${d(len)}</p>${desc ? `<p>${desc}</p>` : ''}`, mount(el) { const box = document.createElement('div'); el.appendChild(box); const pl = K.plot3d.create(box).add({ pts, label: '곡선' }); if (moved) pl.add({ pts: moved, label: '이동한 곡선', color: '#d0342c' }); } };
+          return { html: `<p>x = ${K.esc(xs)}, y = ${K.esc(ys)}, z = ${K.esc(zs)},  ${d(t0)} ≤ t ≤ ${d(t1)}</p><p>곡선의 길이 ≈ ${d(len)}</p>${desc ? `<p>${desc}</p>` : ''}` + K.solve([
+            ['t 에 값을 넣어 점 찍기', [0, 1, 2, 3].map(k => { const t = t0 + (t1 - t0) * k / 4; return `t = ${d(t)}: (${d(X(t))}, ${d(Y(t))}, ${d(Z(t))})${moved ? `  → 이동 후 (${moved[k * 375].map(d).join(', ')})` : ''}`; })],
+            ['곡선의 길이  L = ∫ √(x′² + y′² + z′²) dt', `짧은 선분 1500개의 길이를 더해 근사 → L ≈ ${d(len)}${desc ? '  (이동해도 길이는 그대로)' : ''}`]
+          ]), mount(el) { const box = document.createElement('div'); el.appendChild(box); const pl = K.plot3d.create(box).add({ pts, label: '곡선' }); if (moved) pl.add({ pts: moved, label: '이동한 곡선', color: '#d0342c' }); } };
         }
     }]
   });
@@ -217,7 +267,7 @@
     원: [...Array(61).keys()].map(i => [1 + Math.cos(i * Math.PI / 30), 1 + Math.sin(i * Math.PI / 30)])
   };
   function affineOf(s) { // 변환들을 → 로 이어 쓰면 합성
-    let M = [[1, 0], [0, 1]], T = [0, 0]; const descs = [];
+    let M = [[1, 0], [0, 1]], T = [0, 0]; const descs = [], steps = [];
     s.split(/→|->|>/).map(t => t.trim()).filter(Boolean).forEach(step => {
       let A = [[1, 0], [0, 1]], b = [0, 0]; const t = step.replace(/\s+/g, ' ');
       if (/^회전/.test(t)) { const th = E.num(t.replace('회전', '').replace('°', '')) * Math.PI / 180; A = [[Math.cos(th), -Math.sin(th)], [Math.sin(th), Math.cos(th)]]; descs.push(`회전 ${d(th * 180 / Math.PI)}°`); }
@@ -228,8 +278,9 @@
       else if (/^행렬/.test(t)) { const [m, v] = t.replace('행렬', '').split('|'); A = L.parse(m); if (v) b = E.nums(v); descs.push('행렬 지정'); }
       else throw new Error(`알 수 없는 변환: ${step}`);
       T = L.mv(A, T).map((v, i) => v + b[i]); M = L.mul(A, M);
+      steps.push(`<div class="eq">${descs[descs.length - 1]}:  A = ${L.html(L.clean(A))}, b = (${b.map(f).join(', ')})  →  지금까지 M = ${L.html(L.clean(M))}, T = (${T.map(v => f(+v.toPrecision(12))).join(', ')})</div>`);
     });
-    return { M, T, desc: descs.join(' → ') };
+    return { M, T, desc: descs.join(' → '), steps };
   }
   register('graph', 'affine', {
     ops: Object.keys(SHAPES).map(shape => ({
@@ -237,10 +288,14 @@
       note: '변환: 회전 θ · 확대 sx, sy · 전단 kx, ky · 이동 a, b · 대칭 x축/y축/원점/y=x · 행렬 a b; c d | e, f.  → 로 이어 쓰면 차례로 합성',
       help: [['회전 30', ''], ['확대 1, 0.5', ''], ['전단 1, 0.5', ''], ['이동 3, 2', ''], ['회전 90 → 이동 4, 0', '합성 변환'], ['행렬 1 2; 0 1 | 1, 1', '행렬로 직접']],
       run(s) {
-        const { M, T, desc } = affineOf(s), P = SHAPES[shape], Q = P.map(p => L.mv(M, p).map((v, i) => v + T[i]));
-        const det = L.det(M);
+        const { M, T, desc, steps } = affineOf(s), P = SHAPES[shape], Q = P.map(p => L.mv(M, p).map((v, i) => v + T[i]));
+        const det = L.det(M), p1 = P[1], q1 = Q[1];
         return {
-          html: `<p>${desc}</p><div class="eq">X′ = ${L.html(L.clean(M))} X + ${L.html(T.map(v => [v]))}</div><p>det = ${f(det)} → 넓이 ${N.dec(Math.abs(det))}배${det < 0 ? ', 방향이 뒤집힘 (거울상)' : ''}</p>`,
+          html: `<p>${desc}</p><div class="eq">X′ = ${L.html(L.clean(M))} X + ${L.html(T.map(v => [v]))}</div><p>det = ${f(det)} → 넓이 ${N.dec(Math.abs(det))}배${det < 0 ? ', 방향이 뒤집힘 (거울상)' : ''}</p>` + K.solve([
+            ['각 변환을 X′ = AX + b 로 쓰고 차례로 합성:  M ← A·M,  T ← A·T + b', steps.join('')],
+            ['꼭짓점 하나에 적용해 보기', `(${p1.map(f).join(', ')}) → (${fp(+M[0][0].toPrecision(10))}·${fp(p1[0])} + ${fp(+M[0][1].toPrecision(10))}·${fp(p1[1])} + ${fp(+T[0].toPrecision(10))}, ${fp(+M[1][0].toPrecision(10))}·${fp(p1[0])} + ${fp(+M[1][1].toPrecision(10))}·${fp(p1[1])} + ${fp(+T[1].toPrecision(10))}) = (${q1.map(v => d(v)).join(', ')})`],
+            ['넓이의 배율 = |det M|', `det M = ${fp(+M[0][0].toPrecision(10))}·${fp(+M[1][1].toPrecision(10))} − ${fp(+M[0][1].toPrecision(10))}·${fp(+M[1][0].toPrecision(10))} = ${d(det)}${det < 0 ? '  (음수 → 방향이 뒤집힘)' : ''}`]
+          ]),
           mount(el) { const all = [...P, ...Q]; plotIn(el, { view: K.plot.autoView([all], 0.3), equal: true }).add({ type: 'poly', pts: P, fill: true, label: '처음 도형' }).add({ type: 'poly', pts: Q, fill: true, label: '변환한 도형', color: '#d0342c' }).add({ type: 'points', pts: [[...P[0], 'O'], [...Q[0], "O′"]] }); }
         };
       }
